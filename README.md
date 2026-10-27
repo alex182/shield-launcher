@@ -1,7 +1,7 @@
 # SHIELD Minimal Launcher
 
 A minimal dark home screen for NVIDIA SHIELD Android TV (`mdarcy`, Android 11 /
-API 30). Clock, pinned apps, then everything else alphabetically. No
+API 30). Clock, pinned apps as banners, then everything else alphabetically. No
 recommendation rows, no sponsored content, no network access.
 
 ## Build
@@ -10,10 +10,13 @@ Everything builds inside a container; the host needs only Docker and `adb`.
 
 ```bash
 ./build.sh            # build the APK
-./build.sh install    # build, install over adb, return the device to HOME
+./build.sh install    # build, install on every SHIELD, return each to HOME
 ```
 
-Override the target with `DEVICE=192.168.1.x:5555 ./build.sh install`.
+`install` targets both SHIELDs (Office `192.168.1.209`, Livingroom
+`192.168.1.197`). Override with `DEVICES="192.168.1.x:5555 ..."` or
+`DEVICE=192.168.1.x:5555`. Gradle and the JDK only ever run inside the
+container; the host never compiles anything.
 
 In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
@@ -26,10 +29,15 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 | `.devcontainer/` | JDK 17 + Android SDK 34 + Gradle 8.5 image |
 | `keystore/debug.keystore` | pinned signing key (see below) |
 
-## Pinned apps
+## Pinned and hidden apps
 
-Edit `FAVORITES` in `MainActivity.java`; anything not listed falls into the
-alphabetical section below the divider.
+Edited on the TV: long-press an app (hold the select button) for Pin, Unpin,
+Move left/right, or Hide. Hidden apps are listed under "Hidden apps" above
+Settings; picking one shows it again. Both lists live in the launcher's
+SharedPreferences, so each SHIELD keeps its own.
+
+`DEFAULT_PINNED` and `DEFAULT_HIDDEN` in `MainActivity.java` only seed a fresh
+install (or one whose data was cleared).
 
 ## Things that will bite you
 

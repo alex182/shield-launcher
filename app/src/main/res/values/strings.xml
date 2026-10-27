@@ -2,4 +2,11 @@
     <string name="app_name">Minimal</string>
     <string name="settings">Settings</string>
     <string name="all_apps">All apps</string>
+    <string name="hidden_apps">Hidden apps (%d)</string>
+    <string name="unhide_title">Show again</string>
+    <string name="pin">Pin</string>
+    <string name="unpin">Unpin</string>
+    <string name="move_left">Move left</string>
+    <string name="move_right">Move right</string>
+    <string name="hide">Hide</string>
 </resources>

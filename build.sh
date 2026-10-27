@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Build the launcher in the dev container and optionally install it.
 #   ./build.sh            build only
-#   ./build.sh install    build, install, and return the SHIELD to HOME
+#   ./build.sh install    build, install on every SHIELD, return each to HOME
+# DEVICES (space-separated) or DEVICE overrides the targets.
 set -euo pipefail
 cd "$(dirname "$0")"
-DEVICE="${DEVICE:-192.168.1.209:5555}"
+DEVICES="${DEVICES:-${DEVICE:-192.168.1.209:5555 192.168.1.197:5555}}"
 IMAGE=shield-launcher-dev:latest
 APK=app/build/outputs/apk/release/app-release.apk
 
@@ -20,8 +21,15 @@ docker run --rm \
 echo "APK: $APK ($(stat -c%s "$APK") bytes)"
 
 if [ "${1:-}" = "install" ]; then
-    adb connect "$DEVICE" >/dev/null 2>&1 || true
-    adb -s "$DEVICE" install -r "$APK" </dev/null
-    adb -s "$DEVICE" shell input keyevent KEYCODE_HOME </dev/null
-    echo "installed and returned to HOME"
+    failed=0
+    for d in $DEVICES; do
+        echo "== $d"
+        adb connect "$d" >/dev/null 2>&1 || true
+        if adb -s "$d" install -r "$APK" </dev/null; then
+            adb -s "$d" shell input keyevent KEYCODE_HOME </dev/null
+        else
+            failed=1
+        fi
+    done
+    [ "$failed" = 0 ] && echo "installed on all devices and returned to HOME" || { echo "install failed on at least one device" >&2; exit 1; }
 fi

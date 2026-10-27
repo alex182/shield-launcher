@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Banners already carry colour, so focus is a white ring rather than the
+     inverted fill the text rows use. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <stroke android:width="3dp" android:color="@color/focus" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <stroke android:width="3dp" android:color="#00000000" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+</selector>
