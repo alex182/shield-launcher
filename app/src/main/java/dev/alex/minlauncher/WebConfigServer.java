@@ -120,6 +120,17 @@ final class WebConfigServer implements Runnable {
                 JSONObject o = new JSONObject(text);
                 sendResult(client, () -> HomeAssistant.ping(
                         o.optString("haUrl"), tokenOr(o.optString("haToken"))));
+            } else if (method.equals("POST") && (path.equals("/api/ha/states")
+                    || path.equals("/api/ha/services"))) {
+                // Passed through verbatim; the page does the filtering.
+                JSONObject o = new JSONObject(text);
+                String url = o.optString("haUrl"), token = tokenOr(o.optString("haToken"));
+                try {
+                    send(client, 200, "application/json", path.endsWith("states")
+                            ? HomeAssistant.states(url, token) : HomeAssistant.services(url, token));
+                } catch (IOException e) {
+                    send(client, 502, "application/json", error(e.getMessage()));
+                }
             } else if (method.equals("POST") && path.equals("/api/run")) {
                 JSONObject o = new JSONObject(text);
                 Store.Action a = Store.Action.fromJson(o.getJSONObject("action"));

@@ -14,13 +14,24 @@ import java.nio.charset.StandardCharsets;
  */
 final class HomeAssistant {
 
-    private static final int TIMEOUT_MS = 5000;
+    /** Generous: /api/states on a large install is a few MB. */
+    private static final int TIMEOUT_MS = 10_000;
 
     private HomeAssistant() { }
 
     /** GET /api/ — "API running." when the URL and token are good. */
     static String ping(String url, String token) throws IOException {
         return request(url, token, "GET", "/api/", null);
+    }
+
+    /** GET /api/states — every entity, for the config page's picker. */
+    static String states(String url, String token) throws IOException {
+        return request(url, token, "GET", "/api/states", null);
+    }
+
+    /** GET /api/services — each domain's services, with descriptions. */
+    static String services(String url, String token) throws IOException {
+        return request(url, token, "GET", "/api/services", null);
     }
 
     /** POST /api/services/{domain}/{service} with the action's JSON data. */

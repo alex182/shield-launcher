@@ -13,6 +13,7 @@
     --ok: #6fcf8f; --bad: #ef7a7a;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* beats the display: flex rules below */
   body {
     margin: 0; background: var(--bg); color: var(--fg);
     font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -74,6 +75,27 @@
   .suggest:empty { display: none; }
   .suggest button { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 12px; }
   .suggest button .mdi { font-size: 18px; }
+  dialog {
+    background: var(--panel); color: var(--fg); border: 1px solid #2a2a2a; border-radius: 12px;
+    padding: 0; width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 64px);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.7); }
+  dialog .head { display: flex; align-items: center; gap: 10px; padding: 16px 18px 10px; }
+  dialog .head h3 { margin: 0; font-size: 16px; flex: 1; }
+  dialog .tools { padding: 0 18px 10px; display: flex; flex-direction: column; gap: 8px; }
+  dialog .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  dialog .list { overflow-y: auto; max-height: calc(100vh - 290px); padding: 0 18px 16px; }
+  dialog .msg { color: var(--dim); font-size: 13px; padding: 12px 0; }
+  dialog .msg.bad { color: var(--bad); }
+  .pick {
+    display: flex; width: 100%; text-align: left; align-items: center; gap: 12px;
+    background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 9px 4px;
+  }
+  .pick:hover, .pick:focus-visible { background: var(--field); }
+  .pick .mdi { font-size: 22px; width: 26px; text-align: center; color: var(--dim); flex: none; }
+  .pick .txt { flex: 1; min-width: 0; }
+  .pick .txt small { display: block; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pick .state { color: var(--dim); font-size: 12px; flex: none; }
   @media (max-width: 640px) {
     header { padding: 12px 16px; flex-wrap: wrap; }
     .grid { grid-template-columns: 1fr; }
@@ -139,6 +161,20 @@
   </section>
 </main>
 
+<dialog id="picker">
+  <div class="head">
+    <button id="picker-back" hidden>←</button>
+    <h3 id="picker-title">Choose an entity</h3>
+    <button id="picker-refresh" title="Reload from Home Assistant">Refresh</button>
+    <button id="picker-close">Close</button>
+  </div>
+  <div class="tools" id="picker-tools">
+    <input id="picker-search" placeholder="Search by name or entity ID" autocomplete="off" spellcheck="false">
+    <div class="chips" id="picker-chips"></div>
+  </div>
+  <div class="list" id="picker-list"></div>
+</dialog>
+
 <script>
 let state = null;   // last state from the SHIELD
 let icons = new Map();   // mdi name → codepoint, from the SHIELD's bundled font
@@ -193,6 +229,134 @@ function updateIcon(i) {
   box.innerHTML = exact ? '' : suggestions(a.icon).map(n =>
     `<button data-pick="${i}" data-name="${n}"><span class="mdi">${String.fromCodePoint(icons.get(n))}</span>${n}</button>`).join('');
 }
+
+// ------------------------------------------------- Home Assistant picker
+
+/** Home Assistant's default icon per domain, used when an entity has none. */
+const DOMAIN_ICONS = {
+  automation: 'robot', scene: 'palette', script: 'script-text', light: 'lightbulb',
+  switch: 'toggle-switch', input_boolean: 'toggle-switch-outline', button: 'gesture-tap-button',
+  input_button: 'gesture-tap-button', media_player: 'cast', fan: 'fan', cover: 'window-shutter',
+  climate: 'thermostat', lock: 'lock', vacuum: 'robot-vacuum', remote: 'remote',
+  input_select: 'format-list-bulleted', select: 'format-list-bulleted', siren: 'bullhorn',
+  humidifier: 'air-humidifier', water_heater: 'thermometer', valve: 'valve', lawn_mower: 'robot-mower',
+  number: 'ray-vertex', input_number: 'ray-vertex', camera: 'video', notify: 'message',
+};
+const FILTERS = [
+  ['automation', 'Automations'], ['scene', 'Scenes'], ['script', 'Scripts'], ['light', 'Lights'],
+  ['switch', 'Switches'], ['media_player', 'Media players'], ['', 'All'],
+];
+
+const ha = {states: null, services: null};       // cached per page load
+const pick = {i: -1, filter: 'automation', entity: null};
+
+function domainOf(id) { return id.slice(0, id.indexOf('.')); }
+
+function entityIcon(e) {
+  return e.attributes.icon || 'mdi:' + (DOMAIN_ICONS[domainOf(e.entity_id)] || 'help-circle-outline');
+}
+
+function entityName(e) { return e.attributes.friendly_name || e.entity_id; }
+
+async function haGet(what) {
+  const r = await fetch('/api/ha/' + what, {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(haFields())});
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.error || 'HTTP ' + r.status);
+  return body;
+}
+
+async function loadHa(force) {
+  if (ha.states && ha.services && !force) return;
+  pickerMsg('Loading from Home Assistant…');
+  const [states, services] = await Promise.all([haGet('states'), haGet('services')]);
+  ha.services = {};
+  for (const d of services) ha.services[d.domain] = d.services;
+  ha.states = states.sort((a, b) => entityName(a).localeCompare(entityName(b)));
+}
+
+function pickerMsg(text, bad) {
+  $('picker-list').innerHTML = `<div class="msg ${bad ? 'bad' : ''}">${esc(text)}</div>`;
+}
+
+async function openPicker(i) {
+  pick.i = i;
+  pick.entity = null;
+  $('picker').showModal();
+  showEntities();
+  try { await loadHa(false); showEntities(); }
+  catch (err) { pickerMsg('Could not load from Home Assistant: ' + err.message + '. Check the URL and token below.', true); }
+}
+
+function showEntities() {
+  pick.entity = null;
+  $('picker-title').textContent = 'Choose an entity';
+  $('picker-back').hidden = true;
+  $('picker-tools').hidden = false;
+  $('picker-chips').innerHTML = FILTERS.map(([d, label]) =>
+    `<button data-filter="${d}" class="${pick.filter === d ? 'on' : ''}">${label}</button>`).join('');
+  if (!ha.states) return;
+  const q = $('picker-search').value.trim().toLowerCase();
+  // Only entities whose domain has services can be acted on.
+  const list = ha.states.filter(e => {
+    const d = domainOf(e.entity_id);
+    if (!ha.services[d] || !Object.keys(ha.services[d]).length) return false;
+    if (pick.filter && d !== pick.filter) return false;
+    return !q || entityName(e).toLowerCase().includes(q) || e.entity_id.includes(q);
+  });
+  if (!list.length) { pickerMsg('No matching entities.'); return; }
+  $('picker-list').innerHTML = list.slice(0, 300).map(e => `
+    <button class="pick" data-entity="${esc(e.entity_id)}">
+      <span class="mdi">${glyph(entityIcon(e))}</span>
+      <span class="txt">${esc(entityName(e))}<small>${esc(e.entity_id)}</small></span>
+      <span class="state">${esc(e.state)}</span>
+    </button>`).join('') + (list.length > 300 ? `<div class="msg">${list.length - 300} more; narrow the search.</div>` : '');
+}
+
+function showServices(entityId) {
+  const e = ha.states.find(x => x.entity_id === entityId);
+  pick.entity = e;
+  const d = domainOf(entityId);
+  $('picker-title').textContent = entityName(e);
+  $('picker-back').hidden = false;
+  $('picker-tools').hidden = true;
+  const services = Object.entries(ha.services[d] || {})
+    .sort(([a], [b]) => a.localeCompare(b));
+  $('picker-list').innerHTML = services.map(([name, info]) => `
+    <button class="pick" data-service="${esc(d + '.' + name)}">
+      <span class="mdi">${glyph(entityIcon(e))}</span>
+      <span class="txt">${esc(info.name || name)}<small>${esc(d + '.' + name)}${info.description ? ' · ' + esc(info.description) : ''}</small></span>
+    </button>`).join('') || '<div class="msg">This entity has no actions.</div>';
+}
+
+/** Fills the action from the chosen entity + service; keeps a label/icon the user already set. */
+function applyPick(service) {
+  const a = draft.actions[pick.i], e = pick.entity;
+  a.service = service;
+  a.data = JSON.stringify({entity_id: e.entity_id});
+  if (!a.label.trim() || /^(Action \d+|New action)$/.test(a.label)) a.label = entityName(e);
+  if (!a.icon.trim()) a.icon = entityIcon(e);
+  $('picker').close();
+  render();
+  markDirty();
+}
+
+$('picker-close').onclick = () => $('picker').close();
+$('picker-back').onclick = showEntities;
+$('picker-search').oninput = showEntities;
+$('picker-refresh').onclick = async () => {
+  try { await loadHa(true); pick.entity ? showServices(pick.entity.entity_id) : showEntities(); }
+  catch (err) { pickerMsg('Could not load from Home Assistant: ' + err.message, true); }
+};
+$('picker').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.filter !== undefined) { pick.filter = b.dataset.filter; showEntities(); }
+  else if (b.dataset.entity) showServices(b.dataset.entity);
+  else if (b.dataset.service) applyPick(b.dataset.service);
+});
+
+// ---------------------------------------------------------------- editing
 
 function markDirty() {
   $('status').textContent = 'Unsaved changes';
@@ -260,6 +424,7 @@ function render() {
         <input data-field="label" data-i="${i}" value="${esc(a.label)}" placeholder="Label shown on the TV">
         <button data-act-move="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button data-act-move="${i}" data-d="1" ${i === draft.actions.length - 1 ? 'disabled' : ''}>↓</button>
+        <button data-act-ha="${i}" title="Pick an entity and action from Home Assistant">From Home Assistant…</button>
         <button data-act-test="${i}">Test</button>
         <button data-act-del="${i}">Delete</button>
       </div>
@@ -297,7 +462,7 @@ function move(list, i, d) {
 
 document.addEventListener('click', async e => {
   const b = e.target.closest('button');
-  if (!b || !draft) return;
+  if (!b || !draft || b.closest('dialog')) return;
   const ds = b.dataset;
   if (ds.pinMove !== undefined) move(draft.pinned, +ds.pinMove, +ds.d);
   else if (ds.unpin !== undefined) togglePin(ds.unpin);
@@ -310,6 +475,7 @@ document.addEventListener('click', async e => {
   else if (ds.actMove !== undefined) move(draft.actions, +ds.actMove, +ds.d);
   else if (ds.actDel !== undefined) draft.actions.splice(+ds.actDel, 1);
   else if (ds.actTest !== undefined) { testAction(+ds.actTest); return; }
+  else if (ds.actHa !== undefined) { openPicker(+ds.actHa); return; }
   else if (ds.pick !== undefined) {
     const i = +ds.pick;
     draft.actions[i].icon = 'mdi:' + ds.name;

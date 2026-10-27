@@ -58,7 +58,12 @@ a bundled Material Design Icons font in `app/src/main/assets/mdi/` (Apache
 
 `http://<shield-ip>:8080` (Office `192.168.1.209`, Livingroom `192.168.1.197`)
 edits pins, hidden apps, quick actions, hold time and the Home Assistant URL
-and token, live, per device. It is open to anyone on the LAN by choice; the
+and token, live, per device. "From Home Assistant…" on an action lists your entities
+(filterable: automations, scenes, scripts, lights, …), then the services
+their domain offers (e.g. automation trigger / turn on / turn off / toggle),
+and fills in service, entity, label and icon. The SHIELD proxies
+`/api/states` and `/api/services` for it, so the browser never talks to Home
+Assistant directly and the token stays on the device. It is open to anyone on the LAN by choice; the
 token alone is write-only and never sent back. The server runs inside the
 quick actions service (`WebConfigServer`), so that service must be enabled.
 
