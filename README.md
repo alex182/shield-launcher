@@ -38,7 +38,7 @@ Move left/right, or Hide. Hidden apps are listed under "Hidden apps" above
 Settings; picking one shows it again. Both lists live in the launcher's
 SharedPreferences, so each SHIELD keeps its own.
 
-`DEFAULT_PINNED` and `DEFAULT_HIDDEN` in `MainActivity.java` only seed a fresh
+`DEFAULT_PINNED` and `DEFAULT_HIDDEN` in `Store.java` only seed a fresh
 install (or one whose data was cleared).
 
 ## Quick actions overlay
