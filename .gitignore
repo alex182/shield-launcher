@@ -1,0 +1,6 @@
+app/build/
+build/
+.gradle/
+local.properties
+# Android cmdline-tools, downloaded locally for the image build (153MB)
+.devcontainer/context/

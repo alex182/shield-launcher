@@ -1,0 +1,26 @@
+{
+  "name": "SHIELD Minimal Launcher",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "args": { "UID": "1000", "GID": "1000" }
+  },
+  // Host networking so adb inside the container reaches the SHIELD directly.
+  "runArgs": ["--network=host"],
+  "workspaceFolder": "/workspaces/shield-launcher",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/shield-launcher,type=bind",
+  "mounts": [
+    "source=shield-launcher-gradle,target=/home/dev/.gradle,type=volume"
+  ],
+  // Build as a non-root user whose UID matches the host, so files written into
+  // the bind mount stay owned by you.
+  "remoteUser": "dev",
+  "updateRemoteUserUID": true,
+  "customizations": {
+    "vscode": {
+      "extensions": ["vscjava.vscode-java-pack", "redhat.java"],
+      "settings": { "java.configuration.updateBuildConfiguration": "interactive" }
+    }
+  },
+  "postCreateCommand": "gradle --version | head -5"
+}

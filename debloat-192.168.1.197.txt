@@ -1,0 +1,44 @@
+# Debloat of SHIELD 192.168.1.197 on 2026-10-27
+## Third-party (fully uninstalled, reinstall from Play Store)
+air.com.vudu.air.DownloaderTablet Success
+com.amazon.amazonvideo.livingroom Success
+com.amazon.music.tv Success
+com.apple.atve.androidtv.appletv Success
+com.bydeluxe.d3.android.program.starz Success
+com.cbs.ott Success
+com.cw.fullepisodes.android Success
+com.disney.disneyplus Success
+com.epix.epix.now Success
+com.espn.score_center Success
+com.google.android.play.games Success
+com.google.android.videos Success
+com.google.android.youtube.tvmusic Success
+com.google.android.youtube.tvunplugged Success
+com.hulu.livingroomplus Success
+com.imdbtv.livingroom Success
+com.nbcuni.nbc.androidtv Success
+com.netflix.ninja Success
+com.peacocktv.peacockandroid Success
+com.plexapp.android Success
+com.plexapp.mediaserver.smb Success
+com.showtime.showtimeanytime Success
+com.showtime.standalone Success
+com.silicondust.view Success
+com.valvesoftware.steamlink Success
+com.wbd.stream Success
+org.videolan.vlc Success
+## System (removed for user 0; restore: adb shell cmd package install-existing <pkg>)
+android.autoinstalls.config.nvidia Success
+com.amazon.amazonvideo.livingroom.nvidia Success
+com.nvidia.tegrazone3 Success
+com.nvidia.nvgamecast Success
+com.nvidia.shield.beta Success
+com.nvidia.shieldbeta Success
+com.nvidia.feedback Success
+com.google.android.feedback Success
+com.nvidia.stats Success
+com.nvidia.developerwidget Success
+com.android.printspooler Success
+com.google.android.tvrecommendations Success
+com.nvidia.app.messaging Success
+com.nvidia.shield.ask Success
