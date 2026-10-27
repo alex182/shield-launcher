@@ -39,6 +39,23 @@ SharedPreferences, so each SHIELD keeps its own.
 `DEFAULT_PINNED` and `DEFAULT_HIDDEN` in `MainActivity.java` only seed a fresh
 install (or one whose data was cleared).
 
+## Quick actions overlay
+
+Hold the remote's Netflix button (`KEYCODE_BUTTON_12`, scancode 393) for 3 s
+to open a panel over any app; Back or another Netflix press closes it. The
+actions are placeholders in `QuickMenuService.ACTIONS`, destined for Home
+Assistant. Short presses pass through untouched, so Button Mapper's Netflix →
+Jellyfin mapping still works.
+
+It is an accessibility service, enabled over adb. Append rather than replace,
+or the remapper's service is switched off:
+
+```bash
+cur=$(adb shell settings get secure enabled_accessibility_services)
+adb shell settings put secure enabled_accessibility_services \
+  "$cur:dev.alex.minlauncher/dev.alex.minlauncher.QuickMenuService"
+```
+
 ## Things that will bite you
 
 - **The signing key is pinned** to `keystore/debug.keystore` rather than the

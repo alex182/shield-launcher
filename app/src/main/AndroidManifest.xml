@@ -37,5 +37,20 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Netflix-button hold → quick actions overlay. Enabled over adb;
+             see README. -->
+        <service
+            android:name=".QuickMenuService"
+            android:label="@string/quick_actions"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/quick_menu_service" />
+        </service>
     </application>
 </manifest>
