@@ -24,8 +24,10 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/MainActivity.java` | the whole launcher |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons` |
+| `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
+| `tools/update-mdi.sh` | refresh the bundled icon font |
 | `.devcontainer/` | JDK 17 + Android SDK 34 + Gradle 8.5 image |
 | `keystore/debug.keystore` | pinned signing key (see below) |
 
@@ -46,6 +48,11 @@ to open a panel over any app; Back or another Netflix press closes it. Each
 action calls a Home Assistant service; a blank service is a placeholder.
 Short presses pass through untouched, so Button Mapper's Netflix → Jellyfin
 mapping still works.
+
+Actions can carry Home Assistant icons (`mdi:lightbulb`). They are drawn from
+a bundled Material Design Icons font in `app/src/main/assets/mdi/` (Apache
+2.0, see its `LICENSE`), so nothing is fetched at runtime;
+`tools/update-mdi.sh [version]` refreshes the font and its name table.
 
 ## Web config page
 

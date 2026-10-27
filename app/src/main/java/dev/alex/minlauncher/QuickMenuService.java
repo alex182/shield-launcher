@@ -144,7 +144,7 @@ public class QuickMenuService extends AccessibilityService {
     @SuppressWarnings("deprecation")
     private TextView makeRow(Store.Action action) {
         TextView t = new TextView(this);
-        t.setText(action.label);
+        t.setText(Icons.withLabel(this, action.icon, action.label));
         t.setTextSize(20);
         t.setTextColor(getResources().getColorStateList(R.color.row_text));
         t.setBackgroundResource(R.drawable.row_bg);

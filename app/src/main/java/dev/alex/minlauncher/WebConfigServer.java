@@ -107,6 +107,10 @@ final class WebConfigServer implements Runnable {
         try {
             if (method.equals("GET") && path.equals("/")) {
                 send(client, 200, "text/html; charset=utf-8", page());
+            } else if (method.equals("GET") && path.equals("/mdi.ttf")) {
+                send(client, 200, "font/ttf", asset(Icons.FONT), true);
+            } else if (method.equals("GET") && path.equals("/mdi-names.tsv")) {
+                send(client, 200, "text/plain; charset=utf-8", asset(Icons.NAMES), true);
             } else if (method.equals("GET") && path.equals("/api/state")) {
                 send(client, 200, "application/json", state().toString());
             } else if (method.equals("POST") && path.equals("/api/state")) {
@@ -166,15 +170,30 @@ final class WebConfigServer implements Runnable {
     }
 
     private static void send(Socket client, int code, String type, String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        send(client, code, type, body.getBytes(StandardCharsets.UTF_8), false);
+    }
+
+    /** {@code cacheable}: the bundled icon files only change with the APK. */
+    private static void send(Socket client, int code, String type, byte[] bytes,
+            boolean cacheable) throws IOException {
         String head = String.format(Locale.ROOT,
                 "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n"
-                        + "Cache-Control: no-store\r\nConnection: close\r\n\r\n",
-                code, code < 400 ? "OK" : "Error", type, bytes.length);
+                        + "Cache-Control: %s\r\nConnection: close\r\n\r\n",
+                code, code < 400 ? "OK" : "Error", type, bytes.length,
+                cacheable ? "max-age=86400" : "no-store");
         OutputStream out = client.getOutputStream();
         out.write(head.getBytes(StandardCharsets.US_ASCII));
         out.write(bytes);
         out.flush();
+    }
+
+    private byte[] asset(String name) throws IOException {
+        try (InputStream in = context.getAssets().open(name)) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] chunk = new byte[16384];
+            for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
+            return buf.toByteArray();
+        }
     }
 
     private String page() throws IOException {

@@ -50,18 +50,21 @@ final class Store {
     /**
      * A quick action. {@code service} is Home Assistant's "domain.service"
      * (e.g. "scene.turn_on") and {@code data} its JSON body; an empty service
-     * is a placeholder that does nothing yet.
+     * is a placeholder that does nothing yet. {@code icon} is an "mdi:" name,
+     * as in Home Assistant, or blank.
      */
     static final class Action {
-        final String label, service, data;
-        Action(String label, String service, String data) {
-            this.label = label; this.service = service; this.data = data;
+        final String label, icon, service, data;
+        Action(String label, String icon, String service, String data) {
+            this.label = label; this.icon = icon; this.service = service; this.data = data;
         }
         JSONObject toJson() throws JSONException {
-            return new JSONObject().put("label", label).put("service", service).put("data", data);
+            return new JSONObject().put("label", label).put("icon", icon)
+                    .put("service", service).put("data", data);
         }
         static Action fromJson(JSONObject o) {
-            return new Action(o.optString("label"), o.optString("service"), o.optString("data"));
+            return new Action(o.optString("label"), o.optString("icon"),
+                    o.optString("service"), o.optString("data"));
         }
     }
 
@@ -102,7 +105,7 @@ final class Store {
         List<Action> out = new ArrayList<>();
         String raw = prefs.getString(KEY_ACTIONS, null);
         if (raw == null) {
-            for (int i = 1; i <= 4; i++) out.add(new Action("Action " + i, "", ""));
+            for (int i = 1; i <= 4; i++) out.add(new Action("Action " + i, "", "", ""));
             return out;
         }
         try {
