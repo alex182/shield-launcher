@@ -82,9 +82,10 @@ Mapper off) and adds the app to the doze allowlist.
 - **Doze firewalls the config page.** While a SHIELD sleeps, only
   allowlisted apps accept connections; `dumpsys deviceidle whitelist
   +dev.alex.minlauncher` (done by `build.sh install`) fixes it.
-- **Rethink (Office SHIELD) swallows inbound connections.** Its VPN routes
-  every app's replies into `tun1`, so the page times out from the LAN until
-  the launcher ("Minimal") is excluded from the VPN in Rethink.
+- **Rethink (Office SHIELD, currently off) swallows inbound connections.**
+  Its VPN routes every app's replies into `tun1`, so the page times out from
+  the LAN. If it is turned back on, exclude the launcher ("Minimal") from the
+  VPN in Rethink.
 - **Focus must be requested after layout** (`rows.post(...)`); calling
   `requestFocus()` during view construction silently fails and the framework
   drops focus on the last row instead.
