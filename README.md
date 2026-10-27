@@ -42,19 +42,22 @@ install (or one whose data was cleared).
 ## Quick actions overlay
 
 Hold the remote's Netflix button (`KEYCODE_BUTTON_12`, scancode 393) for 3 s
-to open a panel over any app; Back or another Netflix press closes it. The
-actions are placeholders in `QuickMenuService.ACTIONS`, destined for Home
-Assistant. Short presses pass through untouched, so Button Mapper's Netflix →
-Jellyfin mapping still works.
+to open a panel over any app; Back or another Netflix press closes it. Each
+action calls a Home Assistant service; a blank service is a placeholder.
+Short presses pass through untouched, so Button Mapper's Netflix → Jellyfin
+mapping still works.
 
-It is an accessibility service, enabled over adb. Append rather than replace,
-or the remapper's service is switched off:
+## Web config page
 
-```bash
-cur=$(adb shell settings get secure enabled_accessibility_services)
-adb shell settings put secure enabled_accessibility_services \
-  "$cur:dev.alex.minlauncher/dev.alex.minlauncher.QuickMenuService"
-```
+`http://<shield-ip>:8080` (Office `192.168.1.209`, Livingroom `192.168.1.197`)
+edits pins, hidden apps, quick actions, hold time and the Home Assistant URL
+and token, live, per device. It is open to anyone on the LAN by choice; the
+token alone is write-only and never sent back. The server runs inside the
+quick actions service (`WebConfigServer`), so that service must be enabled.
+
+`./build.sh install` does the device setup: it appends the service to
+`enabled_accessibility_services` (replacing the list would switch Button
+Mapper off) and adds the app to the doze allowlist.
 
 ## Things that will bite you
 
@@ -76,6 +79,12 @@ adb shell settings put secure enabled_accessibility_services \
   ```
   `com.android.tv.settings.system.FallbackHome` sits at `priority=-1000` as a
   safety net, so the device always has *a* home screen.
+- **Doze firewalls the config page.** While a SHIELD sleeps, only
+  allowlisted apps accept connections; `dumpsys deviceidle whitelist
+  +dev.alex.minlauncher` (done by `build.sh install`) fixes it.
+- **Rethink (Office SHIELD) swallows inbound connections.** Its VPN routes
+  every app's replies into `tun1`, so the page times out from the LAN until
+  the launcher ("Minimal") is excluded from the VPN in Rethink.
 - **Focus must be requested after layout** (`rows.post(...)`); calling
   `requestFocus()` during view construction silently fails and the framework
   drops focus on the last row instead.

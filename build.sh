@@ -26,6 +26,18 @@ if [ "${1:-}" = "install" ]; then
         echo "== $d"
         adb connect "$d" >/dev/null 2>&1 || true
         if adb -s "$d" install -r "$APK" </dev/null; then
+            # Quick actions service: append to, never replace, the enabled
+            # list, or Button Mapper's own service is switched off.
+            svc=dev.alex.minlauncher/dev.alex.minlauncher.QuickMenuService
+            cur=$(adb -s "$d" shell settings get secure enabled_accessibility_services </dev/null | tr -d '\r')
+            case "$cur" in
+                *QuickMenuService*) ;;
+                null|"") adb -s "$d" shell settings put secure enabled_accessibility_services "$svc" </dev/null ;;
+                *) adb -s "$d" shell settings put secure enabled_accessibility_services "$cur:$svc" </dev/null ;;
+            esac
+            adb -s "$d" shell settings put secure accessibility_enabled 1 </dev/null
+            # Doze otherwise firewalls the config page while the SHIELD sleeps.
+            adb -s "$d" shell dumpsys deviceidle whitelist +dev.alex.minlauncher </dev/null >/dev/null
             adb -s "$d" shell input keyevent KEYCODE_HOME </dev/null
         else
             failed=1

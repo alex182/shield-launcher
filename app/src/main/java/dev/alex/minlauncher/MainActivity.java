@@ -7,13 +7,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -24,13 +23,12 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import dev.alex.minlauncher.Apps.App;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,37 +37,27 @@ import java.util.Set;
 /**
  * A deliberately minimal Android TV home screen: a clock, pinned apps as
  * banners, then everything else. No rows of recommendations, no sponsored
- * content, no network access of any kind.
+ * content.
  *
- * Pins and hidden apps are edited from the remote (long-press any app) and
- * stored per device, so one APK serves every SHIELD.
+ * Pins and hidden apps are edited from the remote (long-press any app) or the
+ * web config page, and stored per device, so one APK serves every SHIELD.
  */
 public class MainActivity extends Activity {
-
-    /** Pinned on first run, in this order, when installed. */
-    private static final String[] DEFAULT_PINNED = {
-            "org.jellyfin.androidtv",
-            "com.aspiro.tidal",
-    };
-
-    /** Hidden on first run: system tools that are rarely opened directly. */
-    private static final String[] DEFAULT_HIDDEN = {
-            "com.android.documentsui",
-            "com.android.gallery3d",
-            "com.nvidia.inputviewer",
-            "com.nvidia.ota",
-            "com.nvidia.remotelocator",
-    };
-
-    private static final String PREFS = "launcher";
-    private static final String KEY_PINNED = "pinned";   // comma-joined, ordered
-    private static final String KEY_HIDDEN = "hidden";   // string set
 
     private LinearLayout rows;
     private ScrollView scroller;
     private TextView clock, date;
     private BroadcastReceiver timeTick;
-    private SharedPreferences prefs;
+    private Store store;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable rebuild = this::rebuildKeepingFocus;
+    /** Pins and hides can change from the web page while this is showing. */
+    private final SharedPreferences.OnSharedPreferenceChangeListener prefsChanged =
+            (p, key) -> {
+                if (!Store.KEY_PINNED.equals(key) && !Store.KEY_HIDDEN.equals(key)) return;
+                handler.removeCallbacks(rebuild);
+                handler.post(rebuild);   // one rebuild per batch of web edits
+            };
 
     @Override
     protected void onCreate(Bundle state) {
@@ -80,13 +68,7 @@ public class MainActivity extends Activity {
         clock = findViewById(R.id.clock);
         date = findViewById(R.id.date);
 
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        if (!prefs.contains(KEY_PINNED)) {
-            prefs.edit()
-                    .putString(KEY_PINNED, TextUtils.join(",", DEFAULT_PINNED))
-                    .putStringSet(KEY_HIDDEN, new HashSet<>(Arrays.asList(DEFAULT_HIDDEN)))
-                    .apply();
-        }
+        store = new Store(this);
 
         timeTick = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) { updateClock(); }
@@ -101,12 +83,14 @@ public class MainActivity extends Activity {
         // be declared in the manifest.
         registerReceiver(timeTick, new IntentFilter(Intent.ACTION_TIME_TICK));
         buildList(null);   // rebuild so installs/uninstalls show up immediately
+        store.prefs().registerOnSharedPreferenceChangeListener(prefsChanged);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         try { unregisterReceiver(timeTick); } catch (IllegalArgumentException ignored) { }
+        store.prefs().unregisterOnSharedPreferenceChangeListener(prefsChanged);
     }
 
     private void updateClock() {
@@ -116,87 +100,22 @@ public class MainActivity extends Activity {
                 .format(now).toUpperCase(Locale.getDefault()));
     }
 
-    // ------------------------------------------------------------ preferences
-
-    private List<String> pinned() {
-        String raw = prefs.getString(KEY_PINNED, "");
-        List<String> out = new ArrayList<>();
-        for (String p : raw.split(",")) if (!p.isEmpty()) out.add(p);
-        return out;
-    }
-
-    private void setPinned(List<String> pkgs) {
-        prefs.edit().putString(KEY_PINNED, TextUtils.join(",", pkgs)).apply();
-    }
-
-    /** A copy: the set getStringSet returns must not be modified in place. */
-    private Set<String> hidden() {
-        return new HashSet<>(prefs.getStringSet(KEY_HIDDEN, Collections.emptySet()));
-    }
-
-    private void setHidden(Set<String> pkgs) {
-        prefs.edit().putStringSet(KEY_HIDDEN, pkgs).apply();
-    }
-
-    // ---------------------------------------------------------------- app list
-
-    private static final class App {
-        final String label, pkg;
-        final ActivityInfo info;
-        App(String label, String pkg, ActivityInfo info) {
-            this.label = label; this.pkg = pkg; this.info = info;
-        }
-    }
-
-    /**
-     * Collects launchable apps by package. Queries LEANBACK_LAUNCHER *and*
-     * LAUNCHER, because sideloaded phone apps (Button Mapper, for one) only
-     * ever declare the plain LAUNCHER category and would otherwise be
-     * invisible here. Leanback is queried first so its activity, which is the
-     * one carrying the banner, wins.
-     */
-    private Map<String, App> collectApps() {
-        PackageManager pm = getPackageManager();
-        Map<String, App> byPkg = new LinkedHashMap<>();
-        String self = getPackageName();
-        String settingsPkg = settingsPackage();
-
-        for (String category : new String[] {
-                Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER }) {
-            Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(category);
-            for (ResolveInfo ri : pm.queryIntentActivities(probe, 0)) {
-                String pkg = ri.activityInfo.packageName;
-                if (pkg.equals(self) || pkg.equals(settingsPkg)) continue;
-                if (byPkg.containsKey(pkg)) continue;
-                byPkg.put(pkg, new App(ri.loadLabel(pm).toString(), pkg, ri.activityInfo));
-            }
-        }
-        return byPkg;
-    }
-
-    private static List<App> sorted(List<App> apps) {
-        Collections.sort(apps, (a, b) -> a.label.compareToIgnoreCase(b.label));
-        return apps;
-    }
-
-    /** Package that ACTION_SETTINGS opens, so the list can avoid duplicating it. */
-    private String settingsPackage() {
-        ResolveInfo ri = getPackageManager().resolveActivity(
-                new Intent(Settings.ACTION_SETTINGS), 0);
-        return (ri == null || ri.activityInfo == null) ? null : ri.activityInfo.packageName;
+    private void rebuildKeepingFocus() {
+        View f = getCurrentFocus();
+        buildList(f != null && f.getTag() instanceof String ? (String) f.getTag() : null);
     }
 
     /** Rebuilds the screen, then focuses {@code focusPkg} if given, else the first item. */
     private void buildList(String focusPkg) {
         rows.removeAllViews();
-        Map<String, App> all = collectApps();
+        Map<String, App> all = Apps.collect(this);
 
         List<App> pins = new ArrayList<>();
-        for (String p : pinned()) {
+        for (String p : store.pinned()) {
             App a = all.remove(p);
             if (a != null) pins.add(a);
         }
-        Set<String> hiddenPkgs = hidden();
+        Set<String> hiddenPkgs = store.hidden();
         List<App> hiddenApps = new ArrayList<>();
         List<App> rest = new ArrayList<>();
         for (App a : all.values()) (hiddenPkgs.contains(a.pkg) ? hiddenApps : rest).add(a);
@@ -217,7 +136,7 @@ public class MainActivity extends Activity {
             addDivider();
         }
 
-        for (App a : sorted(rest)) {
+        for (App a : Apps.sorted(rest)) {
             View row = makeRow(a.label, v -> launch(a.pkg));
             row.setTag(a.pkg);
             row.setOnLongClickListener(v -> { showAppMenu(a); return true; });
@@ -227,7 +146,7 @@ public class MainActivity extends Activity {
         addDivider();
         if (!hiddenApps.isEmpty()) {
             rows.addView(makeRow(getString(R.string.hidden_apps, hiddenApps.size()),
-                    v -> showHiddenMenu(sorted(hiddenApps))));
+                    v -> showHiddenMenu(Apps.sorted(hiddenApps))));
         }
         rows.addView(makeRow(getString(R.string.settings),
                 v -> startActivity(new Intent(Settings.ACTION_SETTINGS))));
@@ -349,33 +268,33 @@ public class MainActivity extends Activity {
 
     /** Long-press menu: pin/unpin, reorder pins, hide. */
     private void showAppMenu(App a) {
-        List<String> pins = pinned();
+        List<String> pins = store.pinned();
         int at = pins.indexOf(a.pkg);
         List<String> labels = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
 
         if (at < 0) {
             labels.add(getString(R.string.pin));
-            actions.add(() -> { pins.add(a.pkg); setPinned(pins); });
+            actions.add(() -> { pins.add(a.pkg); store.setPinned(pins); });
         } else {
             if (at > 0) {
                 labels.add(getString(R.string.move_left));
-                actions.add(() -> { Collections.swap(pins, at, at - 1); setPinned(pins); });
+                actions.add(() -> { Collections.swap(pins, at, at - 1); store.setPinned(pins); });
             }
             if (at < pins.size() - 1) {
                 labels.add(getString(R.string.move_right));
-                actions.add(() -> { Collections.swap(pins, at, at + 1); setPinned(pins); });
+                actions.add(() -> { Collections.swap(pins, at, at + 1); store.setPinned(pins); });
             }
             labels.add(getString(R.string.unpin));
-            actions.add(() -> { pins.remove(a.pkg); setPinned(pins); });
+            actions.add(() -> { pins.remove(a.pkg); store.setPinned(pins); });
         }
         labels.add(getString(R.string.hide));
         actions.add(() -> {
             pins.remove(a.pkg);
-            setPinned(pins);
-            Set<String> h = hidden();
+            store.setPinned(pins);
+            Set<String> h = store.hidden();
             h.add(a.pkg);
-            setHidden(h);
+            store.setHidden(h);
         });
 
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -395,9 +314,9 @@ public class MainActivity extends Activity {
                 .setTitle(R.string.unhide_title)
                 .setItems(labels, (d, which) -> {
                     String pkg = hiddenApps.get(which).pkg;
-                    Set<String> h = hidden();
+                    Set<String> h = store.hidden();
                     h.remove(pkg);
-                    setHidden(h);
+                    store.setHidden(h);
                     buildList(pkg);
                 })
                 .show();

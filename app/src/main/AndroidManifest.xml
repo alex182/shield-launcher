@@ -4,6 +4,8 @@
     <!-- API 30 package visibility: without this, queryIntentActivities()
          returns almost nothing and the launcher shows an empty list. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Web config page (port 8080) and Home Assistant calls. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -13,7 +15,9 @@
         android:icon="@drawable/ic_launcher"
         android:banner="@drawable/banner"
         android:theme="@style/AppTheme"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true">
+        <!-- Cleartext: Home Assistant on the LAN is usually plain http. -->
 
         <activity
             android:name=".MainActivity"

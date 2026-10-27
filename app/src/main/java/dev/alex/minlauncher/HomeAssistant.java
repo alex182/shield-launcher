@@ -1,0 +1,74 @@
+package dev.alex.minlauncher;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * Minimal Home Assistant REST client. Blocking: call off the main thread.
+ * https://developers.home-assistant.io/docs/api/rest/
+ */
+final class HomeAssistant {
+
+    private static final int TIMEOUT_MS = 5000;
+
+    private HomeAssistant() { }
+
+    /** GET /api/ — "API running." when the URL and token are good. */
+    static String ping(String url, String token) throws IOException {
+        return request(url, token, "GET", "/api/", null);
+    }
+
+    /** POST /api/services/{domain}/{service} with the action's JSON data. */
+    static String call(String url, String token, Store.Action action) throws IOException {
+        int dot = action.service.indexOf('.');
+        if (dot <= 0 || dot == action.service.length() - 1) {
+            throw new IOException("Service must look like domain.service");
+        }
+        String path = "/api/services/" + action.service.substring(0, dot)
+                + "/" + action.service.substring(dot + 1);
+        String body = action.data.trim().isEmpty() ? "{}" : action.data;
+        return request(url, token, "POST", path, body);
+    }
+
+    private static String request(String url, String token, String method, String path,
+            String body) throws IOException {
+        String base = url == null ? "" : url.trim();
+        if (base.isEmpty()) throw new IOException("Home Assistant URL is not set");
+        if (token == null || token.isEmpty()) throw new IOException("Home Assistant token is not set");
+        while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+
+        HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
+        try {
+            c.setConnectTimeout(TIMEOUT_MS);
+            c.setReadTimeout(TIMEOUT_MS);
+            c.setRequestMethod(method);
+            c.setRequestProperty("Authorization", "Bearer " + token);
+            if (body != null) {
+                c.setDoOutput(true);
+                c.setRequestProperty("Content-Type", "application/json");
+                try (OutputStream out = c.getOutputStream()) {
+                    out.write(body.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            int code = c.getResponseCode();
+            InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream();
+            String text = in == null ? "" : readAll(in);
+            if (code >= 400) throw new IOException("HTTP " + code + " " + text.trim());
+            return text;
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    static String readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        byte[] chunk = new byte[4096];
+        for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
+        return buf.toString("UTF-8");
+    }
+}

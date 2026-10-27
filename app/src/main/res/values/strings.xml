@@ -11,5 +11,6 @@
     <string name="hide">Hide</string>
     <string name="quick_actions">Quick actions</string>
     <string name="quick_actions_description">Hold the remote\'s Netflix button for 3 seconds to open quick actions over any app.</string>
-    <string name="action_placeholder">%s: not connected to Home Assistant yet</string>
+    <string name="action_placeholder">%s: no Home Assistant service set</string>
+    <string name="action_failed">%1$s failed: %2$s</string>
 </resources>

@@ -15,9 +15,15 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 /**
- * Holding the remote's Netflix button for {@link #HOLD_MS} opens a quick
- * actions panel over whatever app is in front.
+ * Holding the remote's Netflix button (3 s by default) opens a quick actions
+ * panel over whatever app is in front. Actions call Home Assistant. The
+ * service also hosts the web config page, since it is the one component that
+ * is always running.
  *
  * An accessibility service is the only way a non-system app sees keys meant
  * for other apps, and its TYPE_ACCESSIBILITY_OVERLAY window needs no
@@ -31,24 +37,21 @@ public class QuickMenuService extends AccessibilityService {
 
     /** 2019 SHIELD remote: the Netflix key is scancode 393 → BUTTON_12. */
     private static final int NETFLIX_KEY = KeyEvent.KEYCODE_BUTTON_12;
-    private static final long HOLD_MS = 3000;
-
-    /** Placeholders until these call Home Assistant: {label, action id}. */
-    private static final String[][] ACTIONS = {
-            {"Action 1", "action_1"},
-            {"Action 2", "action_2"},
-            {"Action 3", "action_3"},
-            {"Action 4", "action_4"},
-    };
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable openMenu = this::showMenu;
+    private final ExecutorService calls = Executors.newSingleThreadExecutor();
     private WindowManager wm;
     private View panel;
+    private Store store;
+    private WebConfigServer web;
 
     @Override
     protected void onServiceConnected() {
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        store = new Store(this);
+        web = new WebConfigServer(this, store);
+        web.start();
     }
 
     @Override
@@ -58,7 +61,7 @@ public class QuickMenuService extends AccessibilityService {
             if (panel != null) {
                 hideMenu();
             } else {
-                handler.postDelayed(openMenu, HOLD_MS);
+                handler.postDelayed(openMenu, store.holdMs());
             }
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
             handler.removeCallbacks(openMenu);
@@ -76,6 +79,8 @@ public class QuickMenuService extends AccessibilityService {
     public void onDestroy() {
         handler.removeCallbacks(openMenu);
         hideMenu();
+        if (web != null) web.stop();
+        calls.shutdownNow();
         super.onDestroy();
     }
 
@@ -113,7 +118,7 @@ public class QuickMenuService extends AccessibilityService {
         sub.setPadding(0, dp(2), 0, dp(24));
         box.addView(sub);
 
-        for (String[] action : ACTIONS) box.addView(makeRow(action[0], action[1]));
+        for (Store.Action action : store.actions()) box.addView(makeRow(action));
 
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 dp(420), ViewGroup.LayoutParams.MATCH_PARENT,
@@ -137,9 +142,9 @@ public class QuickMenuService extends AccessibilityService {
     }
 
     @SuppressWarnings("deprecation")
-    private TextView makeRow(String label, String actionId) {
+    private TextView makeRow(Store.Action action) {
         TextView t = new TextView(this);
-        t.setText(label);
+        t.setText(action.label);
         t.setTextSize(20);
         t.setTextColor(getResources().getColorStateList(R.color.row_text));
         t.setBackgroundResource(R.drawable.row_bg);
@@ -150,15 +155,32 @@ public class QuickMenuService extends AccessibilityService {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(2);
         t.setLayoutParams(lp);
-        t.setOnClickListener(v -> runAction(actionId, label));
+        t.setOnClickListener(v -> runAction(action));
         return t;
     }
 
-    /** Placeholder: will become a Home Assistant service call. */
-    private void runAction(String actionId, String label) {
+    private void runAction(Store.Action action) {
         hideMenu();
-        Toast.makeText(this, getString(R.string.action_placeholder, label),
-                Toast.LENGTH_SHORT).show();
+        if (action.service.isEmpty()) {
+            toast(getString(R.string.action_placeholder, action.label));
+            return;
+        }
+        String url = store.haUrl(), token = store.haToken();
+        calls.execute(() -> {
+            String msg;
+            try {
+                HomeAssistant.call(url, token, action);
+                msg = action.label;
+            } catch (IOException e) {
+                msg = getString(R.string.action_failed, action.label, e.getMessage());
+            }
+            String shown = msg;
+            handler.post(() -> toast(shown));
+        });
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 
     private int dp(int v) {
