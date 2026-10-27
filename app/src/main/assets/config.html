@@ -40,7 +40,7 @@
   button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; padding: 7px 16px; }
   button.primary:disabled { opacity: .35; cursor: default; }
   button.on { background: #2a2a2a; border-color: #666; }
-  input, textarea {
+  input, textarea, select {
     font: inherit; color: var(--fg); background: var(--field);
     border: 1px solid #2a2a2a; border-radius: 6px; padding: 7px 9px; width: 100%;
   }
@@ -127,6 +127,23 @@
   </section>
 
   <section>
+    <h2>Netflix button</h2>
+    <p class="hint">The launcher handles this button itself, so remove any Netflix-button mapping in
+      Button Mapper / Buttons remapper, or both will react.</p>
+    <div class="grid">
+      <div>
+        <label for="single-press">Press: open</label>
+        <select id="single-press"></select>
+      </div>
+      <div>
+        <label for="hold">Hold for quick actions (seconds)</label>
+        <input type="number" id="hold" min="0.5" max="10" step="0.5">
+      </div>
+    </div>
+    <p class="hint" style="margin:10px 0 0">Double-press: cameras.</p>
+  </section>
+
+  <section>
     <h2>Quick actions</h2>
     <p class="hint">Hold the remote's Netflix button to open these over any app. Each calls a Home Assistant
       service, e.g. <code>scene.turn_on</code> with <code>{"entity_id": "scene.movie"}</code>.
@@ -134,10 +151,18 @@
     <div id="actions"></div>
     <div class="inline">
       <button id="add-action">Add action</button>
-      <span class="spacer" style="flex:1"></span>
-      <label for="hold" style="margin:0">Hold for</label>
-      <input type="number" id="hold" min="0.5" max="10" step="0.5"> <span style="color:var(--dim)">seconds</span>
     </div>
+  </section>
+
+  <section>
+    <h2>Cameras</h2>
+    <p class="hint">Double-press the Netflix button to see these over any app. Tick the cameras to show and
+      put them in order; with none ticked, every camera in Home Assistant is shown.</p>
+    <div id="cameras"></div>
+    <div class="inline" style="margin-top:10px">
+      <button id="cameras-load">Load cameras from Home Assistant</button>
+    </div>
+    <div class="result" id="cameras-result"></div>
   </section>
 
   <section>
@@ -177,6 +202,7 @@
 
 <script>
 let state = null;   // last state from the SHIELD
+let cameraList = null;   // [{id, name}] from Home Assistant, once loaded
 let icons = new Map();   // mdi name → codepoint, from the SHIELD's bundled font
 let draft = null;   // edits not yet saved
 const $ = id => document.getElementById(id);
@@ -377,7 +403,13 @@ async function load() {
     pinned: [...state.pinned],
     hidden: new Set(state.hidden),
     actions: state.actions.map(a => ({...a})),
+    cameras: [...state.cameras],
   };
+  $('single-press').innerHTML = '<option value="">Nothing</option>' + state.apps.map(a =>
+    `<option value="${esc(a.pkg)}">${esc(a.label)}</option>`).join('') +
+    (state.singlePress && !state.apps.some(a => a.pkg === state.singlePress)
+      ? `<option value="${esc(state.singlePress)}">${esc(state.singlePress)} (not installed)</option>` : '');
+  $('single-press').value = state.singlePress;
   $('device').textContent = state.device;
   document.title = state.device + ' · Launcher';
   $('hold').value = state.holdMs / 1000;
@@ -446,6 +478,26 @@ function render() {
       <div class="result" id="act-result-${i}"></div>
     </div>`).join('') : '<div class="empty">No actions.</div>';
   draft.actions.forEach((_, i) => updateIcon(i));
+  renderCameras();
+}
+
+/** Ticked cameras first, in their saved order; then the rest of Home Assistant's. */
+function renderCameras() {
+  const names = new Map((cameraList || []).map(c => [c.id, c.name]));
+  const rest = (cameraList || []).filter(c => !draft.cameras.includes(c.id));
+  const rows = draft.cameras.map((id, i) => `
+    <div class="row">
+      <label class="check" style="margin:0"><input type="checkbox" data-cam="${esc(id)}" checked></label>
+      <span class="name"><span>${esc(names.get(id) || id)}</span><span class="pkg">${esc(id)}${cameraList && !names.has(id) ? ' · not in Home Assistant' : ''}</span></span>
+      <button data-cam-move="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button data-cam-move="${i}" data-d="1" ${i === draft.cameras.length - 1 ? 'disabled' : ''}>↓</button>
+    </div>`).concat(rest.map(c => `
+    <div class="row">
+      <label class="check" style="margin:0"><input type="checkbox" data-cam="${esc(c.id)}"></label>
+      <span class="name"><span>${esc(c.name)}</span><span class="pkg">${esc(c.id)}</span></span>
+    </div>`));
+  $('cameras').innerHTML = rows.join('') || `<div class="empty">${cameraList
+    ? 'Home Assistant has no cameras.' : 'Showing every camera. Load the list to choose.'}</div>`;
 }
 
 function togglePin(pkg) {
@@ -473,6 +525,7 @@ document.addEventListener('click', async e => {
     else { draft.hidden.add(p); draft.pinned = draft.pinned.filter(x => x !== p); }
   }
   else if (ds.actMove !== undefined) move(draft.actions, +ds.actMove, +ds.d);
+  else if (ds.camMove !== undefined) move(draft.cameras, +ds.camMove, +ds.d);
   else if (ds.actDel !== undefined) draft.actions.splice(+ds.actDel, 1);
   else if (ds.actTest !== undefined) { testAction(+ds.actTest); return; }
   else if (ds.actHa !== undefined) { openPicker(+ds.actHa); return; }
@@ -489,11 +542,35 @@ document.addEventListener('click', async e => {
   markDirty();
 });
 
+document.addEventListener('change', e => {
+  const id = e.target.dataset && e.target.dataset.cam;
+  if (!id) return;
+  if (e.target.checked) { if (!draft.cameras.includes(id)) draft.cameras.push(id); }
+  else draft.cameras = draft.cameras.filter(x => x !== id);
+  renderCameras();
+  markDirty();
+});
+
+$('cameras-load').onclick = async () => {
+  const el = $('cameras-result');
+  el.textContent = 'Loading…'; el.className = 'result';
+  try {
+    const states = await haGet('states');
+    cameraList = states.filter(s => s.entity_id.startsWith('camera.'))
+      .map(s => ({id: s.entity_id, name: s.attributes.friendly_name || s.entity_id}))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    el.textContent = '';
+    renderCameras();
+  } catch (err) {
+    showResult(el, {ok: false, message: 'Could not load cameras: ' + err.message});
+  }
+};
+
 document.addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.field;
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
-  if (f || ['hold', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)) markDirty();
+  if (f || ['hold', 'single-press', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)) markDirty();
 });
 
 $('add-action').onclick = () => {
@@ -544,6 +621,8 @@ $('save').onclick = async () => {
     hidden: [...draft.hidden],
     actions: draft.actions,
     holdMs: Math.round(parseFloat($('hold').value || '3') * 1000),
+    singlePress: $('single-press').value,
+    cameras: draft.cameras,
     haUrl: $('ha-url').value.trim(),
   };
   if ($('ha-clear').checked) body.clearToken = true;

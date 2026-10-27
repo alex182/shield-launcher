@@ -56,6 +56,17 @@ final class Apps {
         return apps;
     }
 
+    /** Starts an app by package, preferring its TV entry point. False if it has none. */
+    static boolean launch(Context c, String pkg) {
+        PackageManager pm = c.getPackageManager();
+        Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
+        if (i == null) i = pm.getLaunchIntentForPackage(pkg);
+        if (i == null) return false;
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        c.startActivity(i);
+        return true;
+    }
+
     /** Package that ACTION_SETTINGS opens, so the list can avoid duplicating it. */
     private static String settingsPackage(Context c) {
         ResolveInfo ri = c.getPackageManager().resolveActivity(

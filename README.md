@@ -41,13 +41,34 @@ SharedPreferences, so each SHIELD keeps its own.
 `DEFAULT_PINNED` and `DEFAULT_HIDDEN` in `Store.java` only seed a fresh
 install (or one whose data was cleared).
 
-## Quick actions overlay
+## Netflix button
 
-Hold the remote's Netflix button (`KEYCODE_BUTTON_12`, scancode 393) for 3 s
-to open a panel over any app; Back or another Netflix press closes it. Each
-action calls a Home Assistant service; a blank service is a placeholder.
-Short presses pass through untouched, so Button Mapper's Netflix → Jellyfin
-mapping still works.
+The launcher owns the remote's Netflix button (`KEYCODE_BUTTON_12`, scancode
+393) over any app:
+
+| Gesture | Does |
+| --- | --- |
+| Press | opens the app chosen on the config page (default Jellyfin) |
+| Double-press | Home Assistant camera grid (`CameraOverlay`) |
+| Hold (3 s default) | quick actions panel |
+
+Any press while an overlay is up closes it; so does Back. Every key-filtering
+accessibility service sees every key, so **Button Mapper / Buttons remapper
+must not map the Netflix button**, or a double press also fires theirs.
+Keys injected with `adb shell input` do not reach accessibility services, so
+the gestures can only be tested with a real remote.
+
+### Quick actions
+
+Each action calls a Home Assistant service; a blank service is a placeholder.
+
+### Cameras
+
+A grid of camera snapshots from `/api/camera_proxy`, refreshed every 2 s (1 s
+for a single camera, chosen with select). The config page picks which cameras
+and their order; none picked means all. The overlay closes when the screen
+turns off. The page itself never shows camera images, since it is open to the
+LAN.
 
 Actions can carry Home Assistant icons (`mdi:lightbulb`). They are drawn from
 a bundled Material Design Icons font in `app/src/main/assets/mdi/` (Apache

@@ -34,6 +34,11 @@ final class HomeAssistant {
         return request(url, token, "GET", "/api/services", null);
     }
 
+    /** GET /api/camera_proxy/{entity} — the camera's current frame, usually JPEG. */
+    static byte[] cameraSnapshot(String url, String token, String entityId) throws IOException {
+        return raw(url, token, "GET", "/api/camera_proxy/" + entityId, null);
+    }
+
     /** POST /api/services/{domain}/{service} with the action's JSON data. */
     static String call(String url, String token, Store.Action action) throws IOException {
         int dot = action.service.indexOf('.');
@@ -47,6 +52,11 @@ final class HomeAssistant {
     }
 
     private static String request(String url, String token, String method, String path,
+            String body) throws IOException {
+        return new String(raw(url, token, method, path, body), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] raw(String url, String token, String method, String path,
             String body) throws IOException {
         String base = url == null ? "" : url.trim();
         if (base.isEmpty()) throw new IOException("Home Assistant URL is not set");
@@ -68,18 +78,25 @@ final class HomeAssistant {
             }
             int code = c.getResponseCode();
             InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream();
-            String text = in == null ? "" : readAll(in);
-            if (code >= 400) throw new IOException("HTTP " + code + " " + text.trim());
-            return text;
+            byte[] bytes = in == null ? new byte[0] : readBytes(in);
+            if (code >= 400) {
+                throw new IOException("HTTP " + code + " "
+                        + new String(bytes, StandardCharsets.UTF_8).trim());
+            }
+            return bytes;
         } finally {
             c.disconnect();
         }
     }
 
     static String readAll(InputStream in) throws IOException {
+        return new String(readBytes(in), StandardCharsets.UTF_8);
+    }
+
+    static byte[] readBytes(InputStream in) throws IOException {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        byte[] chunk = new byte[4096];
+        byte[] chunk = new byte[16384];
         for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
-        return buf.toString("UTF-8");
+        return buf.toByteArray();
     }
 }

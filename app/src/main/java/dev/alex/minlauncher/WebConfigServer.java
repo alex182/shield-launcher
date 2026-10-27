@@ -200,10 +200,7 @@ final class WebConfigServer implements Runnable {
 
     private byte[] asset(String name) throws IOException {
         try (InputStream in = context.getAssets().open(name)) {
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            byte[] chunk = new byte[16384];
-            for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
-            return buf.toByteArray();
+            return HomeAssistant.readBytes(in);
         }
     }
 
@@ -232,6 +229,8 @@ final class WebConfigServer implements Runnable {
                 .put("hidden", new JSONArray(store.hidden()))
                 .put("actions", actions)
                 .put("holdMs", store.holdMs())
+                .put("singlePress", store.singlePress())
+                .put("cameras", new JSONArray(store.cameras()))
                 .put("haUrl", store.haUrl())
                 .put("haTokenSet", !store.haToken().isEmpty());
     }
@@ -246,6 +245,8 @@ final class WebConfigServer implements Runnable {
             store.setActions(list);
         }
         if (o.has("holdMs")) store.setHold(Math.max(500, Math.min(10_000, o.getLong("holdMs"))));
+        if (o.has("singlePress")) store.setSinglePress(o.getString("singlePress"));
+        if (o.has("cameras")) store.setCameras(strings(o.getJSONArray("cameras")));
         if (o.has("haUrl")) store.setHaUrl(o.getString("haUrl").trim());
         if (o.optBoolean("clearToken")) store.setHaToken("");
         else if (!o.optString("haToken").isEmpty()) store.setHaToken(o.getString("haToken").trim());

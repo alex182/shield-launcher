@@ -253,15 +253,9 @@ public class MainActivity extends Activity {
     }
 
     private void launch(String pkg) {
-        PackageManager pm = getPackageManager();
-        Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
-        if (i == null) i = pm.getLaunchIntentForPackage(pkg);
-        if (i == null) {
+        if (!Apps.launch(this, pkg)) {
             Toast.makeText(this, "Cannot launch " + pkg, Toast.LENGTH_SHORT).show();
-            return;
         }
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(i);
     }
 
     // ------------------------------------------------------------------ menus

@@ -44,8 +44,12 @@ final class Store {
     static final String KEY_HOLD_MS = "hold_ms";
     static final String KEY_HA_URL = "ha_url";
     static final String KEY_HA_TOKEN = "ha_token";
+    static final String KEY_SINGLE_PRESS = "netflix_single";   // package, "" = nothing
+    static final String KEY_CAMERAS = "cameras";               // comma-joined entity ids
 
     static final long DEFAULT_HOLD_MS = 3000;
+    /** What Button Mapper did with the Netflix button before this took it over. */
+    static final String DEFAULT_SINGLE_PRESS = "org.jellyfin.androidtv";
 
     /**
      * A quick action. {@code service} is Home Assistant's "domain.service"
@@ -124,6 +128,20 @@ final class Store {
     long holdMs() { return prefs.getLong(KEY_HOLD_MS, DEFAULT_HOLD_MS); }
     String haUrl() { return prefs.getString(KEY_HA_URL, ""); }
     String haToken() { return prefs.getString(KEY_HA_TOKEN, ""); }
+
+    String singlePress() { return prefs.getString(KEY_SINGLE_PRESS, DEFAULT_SINGLE_PRESS); }
+    void setSinglePress(String pkg) { prefs.edit().putString(KEY_SINGLE_PRESS, pkg).apply(); }
+
+    /** Cameras to show, in order; empty means every camera Home Assistant has. */
+    List<String> cameras() {
+        List<String> out = new ArrayList<>();
+        for (String p : prefs.getString(KEY_CAMERAS, "").split(",")) if (!p.isEmpty()) out.add(p);
+        return out;
+    }
+
+    void setCameras(List<String> ids) {
+        prefs.edit().putString(KEY_CAMERAS, TextUtils.join(",", ids)).apply();
+    }
 
     void setHold(long ms) { prefs.edit().putLong(KEY_HOLD_MS, ms).apply(); }
     void setHaUrl(String url) { prefs.edit().putString(KEY_HA_URL, url).apply(); }

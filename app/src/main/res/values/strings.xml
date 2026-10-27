@@ -10,7 +10,11 @@
     <string name="move_right">Move right</string>
     <string name="hide">Hide</string>
     <string name="quick_actions">Quick actions</string>
-    <string name="quick_actions_description">Hold the remote\'s Netflix button for 3 seconds to open quick actions over any app.</string>
+    <string name="quick_actions_description">Netflix button: press to open your chosen app, double-press for cameras, hold for quick actions.</string>
     <string name="action_placeholder">%s: no Home Assistant service set</string>
     <string name="action_failed">%1$s failed: %2$s</string>
+    <string name="cannot_launch">Cannot launch %s</string>
+    <string name="cameras_loading">Loading cameras…</string>
+    <string name="cameras_none">No cameras in Home Assistant</string>
+    <string name="cameras_failed">Could not load cameras: %s</string>
 </resources>

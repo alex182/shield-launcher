@@ -20,36 +20,52 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Holding the remote's Netflix button (3 s by default) opens a quick actions
- * panel over whatever app is in front. Actions call Home Assistant. The
- * service also hosts the web config page, since it is the one component that
- * is always running.
+ * Owns the remote's Netflix button, over whatever app is in front:
+ * <ul>
+ *   <li>single press: opens the configured app (Jellyfin by default);</li>
+ *   <li>double press: the Home Assistant camera grid ({@link CameraOverlay});</li>
+ *   <li>hold (3 s by default): the quick actions panel, which calls Home
+ *       Assistant.</li>
+ * </ul>
+ * Any press while an overlay is up just closes it. The service also hosts the
+ * web config page, since it is the one component that is always running.
  *
  * An accessibility service is the only way a non-system app sees keys meant
- * for other apps, and its TYPE_ACCESSIBILITY_OVERLAY window needs no
+ * for other apps, and its TYPE_ACCESSIBILITY_OVERLAY windows need no
  * SYSTEM_ALERT_WINDOW grant. Enable it over adb (see README).
  *
- * Short presses are deliberately left alone: Button Mapper / Buttons remapper
- * already open Jellyfin on them, and every filtering service sees each key, so
- * consuming it here would not stop them anyway.
+ * Every key-filtering service sees every key, so Button Mapper / Buttons
+ * remapper must have no Netflix-button mapping of their own, or a double
+ * press also fires theirs twice.
  */
 public class QuickMenuService extends AccessibilityService {
 
     /** 2019 SHIELD remote: the Netflix key is scancode 393 → BUTTON_12. */
     private static final int NETFLIX_KEY = KeyEvent.KEYCODE_BUTTON_12;
+    /** A second press within this of the first release makes a double press. */
+    private static final long DOUBLE_PRESS_MS = 350;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable openMenu = this::showMenu;
+    private final Runnable holdReached = () -> { holdFired = true; showMenu(); };
+    private final Runnable singlePress = this::onSinglePress;
     private final ExecutorService calls = Executors.newSingleThreadExecutor();
     private WindowManager wm;
     private View panel;
+    private CameraOverlay cameras;
     private Store store;
     private WebConfigServer web;
+
+    // Netflix-button gesture state.
+    private boolean holdFired;       // this press already opened quick actions
+    private boolean singlePending;   // released once; waiting to see if a second press follows
+    private boolean secondPress;     // this press is the second of a double press
+    private boolean swallowRelease;  // this press only closed an overlay
 
     @Override
     protected void onServiceConnected() {
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         store = new Store(this);
+        cameras = new CameraOverlay(this, wm, store);
         web = new WebConfigServer(this, store);
         web.start();
     }
@@ -57,16 +73,44 @@ public class QuickMenuService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         if (event.getKeyCode() != NETFLIX_KEY) return false;
-        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-            if (panel != null) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() > 0) return true;
+            if (panel != null || cameras.isShowing()) {
                 hideMenu();
-            } else {
-                handler.postDelayed(openMenu, store.holdMs());
+                cameras.hide();
+                swallowRelease = true;
+                return true;
             }
+            holdFired = false;
+            if (singlePending) {
+                handler.removeCallbacks(singlePress);
+                singlePending = false;
+                secondPress = true;
+            }
+            handler.postDelayed(holdReached, store.holdMs());
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
-            handler.removeCallbacks(openMenu);
+            handler.removeCallbacks(holdReached);
+            if (swallowRelease) {
+                swallowRelease = false;
+            } else if (holdFired) {
+                secondPress = false;
+            } else if (secondPress) {
+                secondPress = false;
+                cameras.show();
+            } else {
+                singlePending = true;
+                handler.postDelayed(singlePress, DOUBLE_PRESS_MS);
+            }
         }
-        return false;   // let the remappers keep their short press
+        return true;   // the system's own Netflix-button handling never sees it
+    }
+
+    private void onSinglePress() {
+        singlePending = false;
+        String pkg = store.singlePress();
+        if (!pkg.isEmpty() && !Apps.launch(this, pkg)) {
+            toast(getString(R.string.cannot_launch, pkg));
+        }
     }
 
     @Override
@@ -77,8 +121,10 @@ public class QuickMenuService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
-        handler.removeCallbacks(openMenu);
+        handler.removeCallbacks(holdReached);
+        handler.removeCallbacks(singlePress);
         hideMenu();
+        if (cameras != null) cameras.shutdown();
         if (web != null) web.stop();
         calls.shutdownNow();
         super.onDestroy();
