@@ -26,6 +26,7 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -56,7 +57,7 @@ final class BackgroundController {
     private final Store store;
     private final ImageView image;
     private final Scrim scrim;
-    private final TextView weatherLine;
+    private final TextView weatherLine, forecastLine;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Runnable poll = this::refresh;
@@ -69,12 +70,14 @@ final class BackgroundController {
     private boolean running;
     private Backgrounds.Day today = Backgrounds.Day.today();
 
-    BackgroundController(Context context, Store store, ImageView image, Scrim scrim, TextView weatherLine) {
+    BackgroundController(Context context, Store store, ImageView image, Scrim scrim, TextView weatherLine,
+            TextView forecastLine) {
         this.context = context.getApplicationContext();
         this.store = store;
         this.image = image;
         this.scrim = scrim;
         this.weatherLine = weatherLine;
+        this.forecastLine = forecastLine;
     }
 
     /** HOME is showing: pick now, then every {@link #POLL_MS}. */
@@ -138,7 +141,8 @@ final class BackgroundController {
             String line = Backgrounds.weatherText(condition,
                     attrs == null ? Double.NaN : attrs.optDouble("temperature", Double.NaN),
                     attrs == null ? null : attrs.optString("temperature_unit", null));
-            handler.post(() -> showWeather(line));
+            String forecast = weather == null ? null : forecast(url, token, store.bgWeather());
+            handler.post(() -> showWeather(line, forecast));
         } catch (IOException e) {
             // Keep whatever is showing; showLast() already put up the last pick.
             Log.w(TAG, "cannot reach Home Assistant: " + e.getMessage());
@@ -194,6 +198,24 @@ final class BackgroundController {
         } catch (IOException | JSONException e) {
             Log.w(TAG, "no usable manifest.json in the APK: " + e.getMessage());
             return false;
+        }
+    }
+
+    /** Today's (or, in the evening, tomorrow's) forecast line; null if there is none. */
+    private static String forecast(String url, String token, String entityId) {
+        try {
+            JSONArray days = HomeAssistant.dailyForecast(url, token, entityId);
+            boolean tomorrow = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                    >= Backgrounds.FORECAST_TOMORROW_HOUR;
+            JSONObject d = days.optJSONObject(tomorrow ? 1 : 0);
+            if (d == null) return null;
+            return Backgrounds.forecastText(tomorrow, d.optDouble("temperature", Double.NaN),
+                    d.optDouble("templow", Double.NaN), d.optDouble("precipitation_probability", Double.NaN),
+                    d.optString("condition", null));
+        } catch (IOException e) {
+            // Not every weather integration has a daily forecast; the line just stays hidden.
+            Log.w(TAG, "no forecast: " + e.getMessage());
+            return null;
         }
     }
 
@@ -268,9 +290,11 @@ final class BackgroundController {
 
     // ---------------------------------------------------------------- main
 
-    private void showWeather(String line) {
+    private void showWeather(String line, String forecast) {
         weatherLine.setText(line);
         weatherLine.setVisibility(line == null ? View.GONE : View.VISIBLE);
+        forecastLine.setText(forecast);
+        forecastLine.setVisibility(forecast == null ? View.GONE : View.VISIBLE);
     }
 
     private void crossfade(String key, Bitmap bmp) {

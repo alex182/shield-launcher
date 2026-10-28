@@ -52,7 +52,7 @@ Things worth knowing:
 `comfyui/*` (except the compose file) is gitignored, and so is `output/`,
 except for `output/backgrounds/`: the finished set is committed because the APK
 bundles it. Commit it again after regenerating; a full regeneration adds about
-145 MB to the repo's history, so prefer rerunning single images.
+357 MB to the repo's history, so prefer rerunning single images.
 
 ### Models
 
@@ -97,18 +97,22 @@ Each image is an edit of the one before, so the whole set is the same scene:
 ```
 chosen base ─▶ focal (windmill) ─▶ season ×4 ─▶ time: day | night ─▶ condition ×9
                                                        └─▶ holiday (from <holiday's season>/<time>/clear)
+                                                              └─▶ holiday weather ×8 (every condition but clear)
 ```
 
 - **day** is a copy of the season image (`"day": null` in `times`); that's already daytime, and copying avoids one generation of drift. **night** is an edit.
 - **Skipped:** `summer/snowy`, day and night (`skip` in the config).
 - **Holidays** and the season they start from: valentines, christmas and new_years → winter; st_patricks and easter → spring; july_4th → summer; halloween and thanksgiving → autumn. Each one is made for day and night, and decorations stay small and in the right third.
+- **Holiday weather** applies the same condition edit to the finished holiday image (plus `holiday_keep`, so the decorations stay put), so a rainy Halloween keeps the same jack-o'-lantern. Clear is the holiday image itself. The launcher shows the holiday in today's weather, falling back to the clear holiday image if that one is missing.
+- `holiday_conditions` replaces a condition's wording for holiday images only. The thunderstorm one keeps its clouds along the top edge; the normal one fills the sky and buried the hearts and fireworks.
 - Seeds are fixed per stage in `seeds`. Use `seed_overrides` to reroll a single image, e.g. `"weather/windmill/autumn/night/fog": 999`.
 
 Outputs:
 
 ```
 output/backgrounds/<focal>/<season>/<day|night>/<condition>.webp
-output/backgrounds/holidays/<focal>/<holiday>/<day|night>.webp
+output/backgrounds/holidays/<focal>/<holiday>/<day|night>.webp              # clear
+output/backgrounds/holidays/<focal>/<holiday>/<day|night>/<condition>.webp  # other weather
 output/backgrounds/manifest.json   # rebuilt after every run
 ```
 
@@ -118,7 +122,7 @@ every `.webp` that exists.
 
 ## Running it
 
-The full windmill set is 95 edits and 86 4K finals (70 weather + 16 holiday).
+The full windmill set is 221 edits and 212 4K finals (70 weather + 16 holiday + 126 holiday weather).
 
 ```bash
 # 1. Base candidates (one per seed in base.candidate_seeds), then stop.
@@ -148,8 +152,11 @@ never forced.
 # One image
 scripts/generate_backgrounds.py --season autumn --time night --condition fog --force
 
-# One holiday (both times)
+# One holiday (both times, every condition); writes output/review/holiday_<focal>_<holiday>.jpg
 scripts/generate_backgrounds.py --holiday christmas --force
+
+# One holiday in one weather
+scripts/generate_backgrounds.py --holiday christmas --condition snowy --force
 
 # Re-do winter from the season edit down (season, night, conditions, winter holidays, finals)
 scripts/generate_backgrounds.py --from season --season winter --force
@@ -196,5 +203,5 @@ automatically.
 They ship in the launcher's APK. `./build.sh` copies `output/backgrounds/`
 (the WebPs and `manifest.json`) into `assets/backgrounds/`, and
 `./build.sh install` puts them on every SHIELD. After generating new images or
-a new focal element, rebuild and install. The full windmill set is about 145 MB
-(86 files, ~1.7 MB each), so the APK is about 150 MB.
+a new focal element, rebuild and install. The full windmill set is about 357 MB
+(212 files, ~1.7 MB each), so the APK is about 375 MB.

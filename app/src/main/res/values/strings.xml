@@ -17,4 +17,19 @@
     <string name="cameras_loading">Loading cameras…</string>
     <string name="cameras_none">No cameras in Home Assistant</string>
     <string name="cameras_failed">Could not load cameras: %s</string>
+    <string name="sleep_start">Sleep in %d min</string>
+    <string name="sleep_running">Sleep in %d min · press to cancel</string>
+    <string name="sleep_header">Sleep in %d min</string>
+    <string name="sleep_set">Sleeping in %d minutes</string>
+    <string name="sleep_cancelled">Sleep timer off</string>
+    <string name="sleep_soon">Sleeping in 1 minute. Hold the Netflix button to cancel.</string>
+    <string name="light_loading">Loading…</string>
+    <string name="light_one">Light</string>
+    <string name="light_many">%d lights</string>
+    <string name="light_failed">Home Assistant: %s</string>
+    <string name="light_brightness">Brightness · %d%%</string>
+    <string name="light_brightness_off">Brightness · off</string>
+    <string name="light_white">White</string>
+    <string name="light_color">Color</string>
+    <string name="light_no_controls">These lights only turn on and off</string>
 </resources>

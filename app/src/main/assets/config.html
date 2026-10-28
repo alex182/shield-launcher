@@ -103,6 +103,11 @@
   .pick .txt { flex: 1; min-width: 0; }
   .pick .txt small { display: block; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pick .state { color: var(--dim); font-size: 12px; flex: none; }
+  .pick .tick { font-size: 20px; color: var(--dim); flex: none; }
+  .pick.on .tick { color: var(--accent); }
+  .pick:disabled { opacity: .35; cursor: default; background: none; }
+  dialog .foot { display: flex; align-items: center; gap: 10px; padding: 10px 18px 16px; border-top: 1px solid var(--line); }
+  dialog .foot span { flex: 1; min-width: 0; color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media (max-width: 640px) {
     header { padding: 12px 16px; flex-wrap: wrap; }
     .grid, .grid3, .grid5 { grid-template-columns: 1fr; }
@@ -159,6 +164,12 @@
     <div class="inline">
       <button id="add-action">Add action</button>
     </div>
+    <h3 class="sub">Sleep</h3>
+    <p class="hint">The last row of quick actions starts a sleep timer: when it runs out, playback stops,
+      the SHIELD sleeps and the TV turns off with it (over HDMI-CEC). Press the row again to cancel.</p>
+    <label class="check"><input type="checkbox" id="sleep-shown"> Show Sleep in quick actions</label>
+    <label for="sleep-minutes">Sleep after (minutes)</label>
+    <input type="number" id="sleep-minutes" min="1" max="600" step="1" style="width:90px">
   </section>
 
   <section>
@@ -268,6 +279,11 @@
     <div class="chips" id="picker-chips"></div>
   </div>
   <div class="list" id="picker-list"></div>
+  <div class="foot" id="picker-foot" hidden>
+    <span id="picker-chosen"></span>
+    <button id="picker-clear">Clear</button>
+    <button id="picker-next" class="primary">Choose action →</button>
+  </div>
 </dialog>
 
 <script>
@@ -344,9 +360,25 @@ const FILTERS = [
 ];
 
 const ha = {states: null, services: null};       // cached per page load
-const pick = {i: -1, filter: 'automation', entity: null};
+// chosen: entity IDs, all of one domain, so one service call acts on them all.
+const pick = {i: -1, filter: 'automation', chosen: [], onServices: false};
 
 function domainOf(id) { return id.slice(0, id.indexOf('.')); }
+
+/** The entity IDs in an action's data: entity_id may be one ID or a list. */
+function entitiesOf(a) {
+  let id;
+  try { id = JSON.parse(a.data || '{}').entity_id; } catch (err) { return []; }
+  const ids = (Array.isArray(id) ? id : [id]).filter(x => typeof x === 'string' && x.includes('.'));
+  return a.service ? ids.filter(x => domainOf(x) === domainOf(a.service)) : ids;
+}
+
+function stateOf(id) { return ha.states && ha.states.find(e => e.entity_id === id); }
+
+function nameOf(id) { const e = stateOf(id); return e ? entityName(e) : id; }
+
+/** The label a pick of these entities gives an action: "Kitchen Lights + Livingroom Lights". */
+function autoLabel(ids) { return ids.map(nameOf).join(' + '); }
 
 function entityIcon(e) {
   return e.attributes.icon || 'mdi:' + (DOMAIN_ICONS[domainOf(e.entity_id)] || 'help-circle-outline');
@@ -377,7 +409,11 @@ function pickerMsg(text, bad) {
 
 async function openPicker(i) {
   pick.i = i;
-  pick.entity = null;
+  // Reopening an action starts from its entities, so more can be added.
+  pick.chosen = entitiesOf(draft.actions[i]);
+  if (pick.chosen.length) pick.filter = FILTERS.some(([d]) => d === domainOf(pick.chosen[0]))
+      ? domainOf(pick.chosen[0]) : '';
+  $('picker-foot').hidden = true;   // until the entities are listed
   $('picker').showModal();
   showEntities();
   try { await loadHa(false); showEntities(); }
@@ -385,8 +421,8 @@ async function openPicker(i) {
 }
 
 function showEntities() {
-  pick.entity = null;
-  $('picker-title').textContent = 'Choose an entity';
+  pick.onServices = false;
+  $('picker-title').textContent = 'Choose entities';
   $('picker-back').hidden = true;
   $('picker-tools').hidden = false;
   $('picker-chips').innerHTML = FILTERS.map(([d, label]) =>
@@ -403,19 +439,42 @@ function showEntities() {
   if (!list.length) { pickerMsg('No matching entities.'); return; }
   $('picker-list').innerHTML = list.slice(0, 300).map(e => `
     <button class="pick" data-entity="${esc(e.entity_id)}">
+      <span class="tick mdi"></span>
       <span class="mdi">${glyph(entityIcon(e))}</span>
       <span class="txt">${esc(entityName(e))}<small>${esc(e.entity_id)}</small></span>
       <span class="state">${esc(e.state)}</span>
     </button>`).join('') + (list.length > 300 ? `<div class="msg">${list.length - 300} more; narrow the search.</div>` : '');
+  syncChosen();
 }
 
-function showServices(entityId) {
-  const e = ha.states.find(x => x.entity_id === entityId);
-  pick.entity = e;
-  const d = domainOf(entityId);
-  $('picker-title').textContent = entityName(e);
+/** Ticks the chosen rows, greys out other domains and updates the footer, without a re-render. */
+function syncChosen() {
+  const d = pick.chosen.length ? domainOf(pick.chosen[0]) : null;
+  for (const b of $('picker-list').querySelectorAll('[data-entity]')) {
+    const on = pick.chosen.includes(b.dataset.entity);
+    b.classList.toggle('on', on);
+    b.disabled = d !== null && domainOf(b.dataset.entity) !== d;
+    b.querySelector('.tick').textContent = glyph(on ? 'mdi:checkbox-marked' : 'mdi:checkbox-blank-outline');
+  }
+  $('picker-foot').hidden = pick.onServices || !pick.chosen.length;
+  $('picker-chosen').textContent = pick.chosen.length + ' chosen: ' + autoLabel(pick.chosen);
+}
+
+function toggleEntity(id) {
+  const at = pick.chosen.indexOf(id);
+  if (at < 0) pick.chosen.push(id); else pick.chosen.splice(at, 1);
+  syncChosen();
+}
+
+function showServices() {
+  pick.onServices = true;
+  const first = pick.chosen[0], e = stateOf(first) || {entity_id: first, attributes: {}};
+  const d = domainOf(first);
+  $('picker-title').textContent = pick.chosen.length === 1 ? entityName(e)
+      : pick.chosen.length + ' entities';
   $('picker-back').hidden = false;
   $('picker-tools').hidden = true;
+  syncChosen();
   const services = Object.entries(ha.services[d] || {})
     .sort(([a], [b]) => a.localeCompare(b));
   $('picker-list').innerHTML = services.map(([name, info]) => `
@@ -425,13 +484,16 @@ function showServices(entityId) {
     </button>`).join('') || '<div class="msg">This entity has no actions.</div>';
 }
 
-/** Fills the action from the chosen entity + service; keeps a label/icon the user already set. */
+/** Fills the action from the chosen entities + service; keeps a label/icon the user already set. */
 function applyPick(service) {
-  const a = draft.actions[pick.i], e = pick.entity;
+  const a = draft.actions[pick.i], ids = pick.chosen, first = stateOf(ids[0]);
+  // A label the last pick made is not the user's, so it follows the entities.
+  const wasAuto = !a.label.trim() || /^(Action \d+|New action)$/.test(a.label)
+      || a.label === autoLabel(entitiesOf(a));
   a.service = service;
-  a.data = JSON.stringify({entity_id: e.entity_id});
-  if (!a.label.trim() || /^(Action \d+|New action)$/.test(a.label)) a.label = entityName(e);
-  if (!a.icon.trim()) a.icon = entityIcon(e);
+  a.data = JSON.stringify({entity_id: ids.length === 1 ? ids[0] : ids});
+  if (wasAuto) a.label = autoLabel(ids);
+  if (!a.icon.trim() && first) a.icon = entityIcon(first);
   $('picker').close();
   render();
   markDirty();
@@ -439,16 +501,18 @@ function applyPick(service) {
 
 $('picker-close').onclick = () => $('picker').close();
 $('picker-back').onclick = showEntities;
+$('picker-clear').onclick = () => { pick.chosen = []; syncChosen(); };
+$('picker-next').onclick = showServices;
 $('picker-search').oninput = showEntities;
 $('picker-refresh').onclick = async () => {
-  try { await loadHa(true); pick.entity ? showServices(pick.entity.entity_id) : showEntities(); }
+  try { await loadHa(true); pick.onServices ? showServices() : showEntities(); }
   catch (err) { pickerMsg('Could not load from Home Assistant: ' + err.message, true); }
 };
 $('picker').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.filter !== undefined) { pick.filter = b.dataset.filter; showEntities(); }
-  else if (b.dataset.entity) showServices(b.dataset.entity);
+  else if (b.dataset.entity) toggleEntity(b.dataset.entity);
   else if (b.dataset.service) applyPick(b.dataset.service);
 });
 
@@ -483,6 +547,8 @@ async function load() {
   $('device').textContent = state.device;
   document.title = state.device + ' · Launcher';
   $('hold').value = state.holdMs / 1000;
+  $('sleep-minutes').value = state.sleepMinutes;
+  $('sleep-shown').checked = state.sleepShown;
   $('ha-url').value = state.haUrl;
   $('ha-token').value = '';
   $('ha-token').placeholder = state.haTokenSet ? 'Saved. Leave blank to keep it' : 'Not set';
@@ -695,7 +761,7 @@ document.addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.field;
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
-  if (f || ['hold', 'single-press', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
+  if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
       || /^(bg|ov)-/.test(e.target.id)) markDirty();
 });
 
@@ -748,6 +814,8 @@ $('save').onclick = async () => {
     actions: draft.actions,
     holdMs: Math.round(parseFloat($('hold').value || '3') * 1000),
     singlePress: $('single-press').value,
+    sleepMinutes: Math.max(1, Math.min(600, Math.round(parseFloat($('sleep-minutes').value) || 90))),
+    sleepShown: $('sleep-shown').checked,
     cameras: draft.cameras,
     haUrl: $('ha-url').value.trim(),
     background: backgroundFields(),

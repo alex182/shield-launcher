@@ -6,4 +6,8 @@
     <color name="focus_text">#FF000000</color>
     <!-- Behind text drawn over background images. -->
     <color name="text_shadow">#CC000000</color>
+    <!-- Date and weather: secondary to the clock but still legible over a
+         bright sky. dim is for text on plain black. -->
+    <color name="subtitle">#FFD6D6D6</color>
+    <color name="subtitle_shadow">#FF000000</color>
 </resources>

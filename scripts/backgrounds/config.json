@@ -10,6 +10,8 @@
 
   "style": "Flat layered landscape illustration of the Kansas Flint Hills: treeless, gently rolling tallgrass hills drawn as flat stacked layers under a big open sky. Soft gradients and subtle film grain. Minimal, cozy and calm. No outlines, no text. Warm, muted earth tones: tallgrass gold, sage, rust, dusty blue sky. Wide 16:9 composition with the horizon at half height. The left 60% of the frame is simple, quiet and low-contrast; all visual interest sits in the right third.",
 
+  "holiday_keep": "Keep every holiday decoration already in the picture exactly as it is, in the same place, at the same small size and in the same colors; do not add, move or remove any.",
+
   "keep": "Keep the exact same composition, horizon line, hill shapes, layers, framing and illustration style. Keep the left 60% of the image simple and low-contrast. Do not add text.",
 
   "base": {
@@ -60,6 +62,10 @@
     "windy": "Make it windy: the tallgrass bends and sways to one side, with streaky, wind-swept clouds racing across the sky."
   },
 
+  "holiday_conditions": {
+    "lightning-rainy": "Make it a thunderstorm: dark storm clouds only along the very top edge of the sky, falling rain, and one bright lightning bolt in the right third that does not cover anything. Every holiday decoration in the sky stays clearly visible, bright and in front of the clouds and rain."
+  },
+
   "skip": [
     {"season": "summer", "condition": "snowy"}
   ],
@@ -80,7 +86,8 @@
     "season": 22222,
     "time": 33333,
     "weather": 44444,
-    "holiday": 55555
+    "holiday": 55555,
+    "holiday_weather": 66666
   },
   "seed_overrides": {
     "holiday/windmill/halloween/day": 55601,
@@ -88,6 +95,11 @@
     "holiday/windmill/christmas/day": 55603,
     "holiday/windmill/christmas/night": 55604,
     "weather/windmill/spring/day/snowy": 44401,
-    "weather/windmill/winter/day/snowy": 44402
+    "weather/windmill/winter/day/snowy": 44402,
+    "holiday_weather/windmill/valentines/day/lightning-rainy": 66612,
+    "holiday_weather/windmill/valentines/night/lightning-rainy": 66602,
+    "holiday_weather/windmill/new_years/day/lightning-rainy": 66603,
+    "holiday_weather/windmill/new_years/night/lightning-rainy": 66604,
+    "holiday_weather/windmill/july_4th/night/lightning-rainy": 66605
   }
 }

@@ -55,6 +55,15 @@ public class BackgroundsTest {
         assertEquals("Partly cloudy · 54°F", Backgrounds.weatherText("partlycloudy", 54.4, "°F"));
         assertEquals("Lightning, rainy · -3°C", Backgrounds.weatherText("lightning-rainy", -2.6, "°C"));
         assertEquals("Sunny", Backgrounds.weatherText("sunny", Double.NaN, "°F"));
+    }
+
+    @Test public void forecastLine() {
+        assertEquals("High 68° · Low 51° · 40% rain",
+                Backgrounds.forecastText(false, 67.6, 50.9, 40, "rainy"));
+        assertEquals("Tomorrow · High 30° · Low 18° · 80% snow",
+                Backgrounds.forecastText(true, 30, 18, 80, "snowy"));
+        assertEquals("High 68°", Backgrounds.forecastText(false, 68, Double.NaN, Double.NaN, null));
+        assertNull(Backgrounds.forecastText(true, Double.NaN, Double.NaN, Double.NaN, "sunny"));
         assertNull(Backgrounds.weatherText("unavailable", 54, "°F"));
         assertNull(Backgrounds.weatherText(null, 54, "°F"));
         for (String s : new String[] {"clear-night", "cloudy", "exceptional", "fog", "hail", "lightning",
@@ -231,6 +240,7 @@ public class BackgroundsTest {
             "windmill/autumn/night/clear.webp",
             "farmhouse/winter/day/clear.webp",
             "holidays/windmill/halloween/day.webp",
+            "holidays/windmill/halloween/day/rainy.webp",
             "holidays/farmhouse/christmas/night.webp");
 
     private static Choice pick(Inputs in, Forced o, String focal) {
@@ -261,6 +271,17 @@ public class BackgroundsTest {
     @Test public void holidayBeatsWeather() {
         Choice c = pick(in(new Day(2026, 10, 30), "pouring", "above_horizon", "autumn"), Forced.NONE, "windmill");
         assertEquals("holidays/windmill/halloween/day.webp", c.path);
+    }
+
+    @Test public void holidayInTodaysWeather() {
+        Choice c = pick(in(new Day(2026, 10, 30), "rainy", "above_horizon", "autumn"), Forced.NONE, "windmill");
+        assertEquals("holidays/windmill/halloween/day/rainy.webp", c.path);
+    }
+
+    @Test public void holidayWithoutThatWeatherIsClear() {
+        Choice c = pick(in(new Day(2026, 10, 30), "fog", "above_horizon", "autumn"), Forced.NONE, "windmill");
+        assertEquals("holidays/windmill/halloween/day.webp", c.path);
+        assertTrue(c.reason, c.reason.contains("no fog image, using clear"));
     }
 
     @Test public void holidayFromAnotherFocalBeforeWeather() {

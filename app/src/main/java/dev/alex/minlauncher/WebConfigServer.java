@@ -230,6 +230,8 @@ final class WebConfigServer implements Runnable {
                 .put("actions", actions)
                 .put("holdMs", store.holdMs())
                 .put("singlePress", store.singlePress())
+                .put("sleepMinutes", store.sleepMinutes())
+                .put("sleepShown", store.sleepShown())
                 .put("cameras", new JSONArray(store.cameras()))
                 .put("haUrl", store.haUrl())
                 .put("haTokenSet", !store.haToken().isEmpty())
@@ -271,6 +273,7 @@ final class WebConfigServer implements Runnable {
         }
         if (o.has("holdMs")) store.setHold(Math.max(500, Math.min(10_000, o.getLong("holdMs"))));
         if (o.has("singlePress")) store.setSinglePress(o.getString("singlePress"));
+        if (o.has("sleepMinutes")) store.setSleep(o.getInt("sleepMinutes"), o.optBoolean("sleepShown", true));
         if (o.has("cameras")) store.setCameras(strings(o.getJSONArray("cameras")));
         if (o.has("haUrl")) store.setHaUrl(o.getString("haUrl").trim());
         if (o.optBoolean("clearToken")) store.setHaToken("");

@@ -25,7 +25,7 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`; `TileFlow` (wrapping banner row) |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`; `TileFlow` (wrapping banner row) |
 | `app/src/test/` | JVM unit tests (`Backgrounds`, `TileFlow` wrapping); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
@@ -63,6 +63,22 @@ the gestures can only be tested with a real remote.
 ### Quick actions
 
 Each action calls a Home Assistant service; a blank service is a placeholder.
+The panel stays open after an action runs, so several can be run in a row;
+Back or the Netflix button closes it.
+
+The last row is **Sleep** (shown by default; the config page can hide it). It
+starts a timer, 90 minutes unless changed on the config page; press it again
+to cancel. When it runs out the launcher sends media pause and stop, goes
+HOME, then sleeps the SHIELD with the accessibility lock-screen action, which
+puts the device to sleep on Android 9+. The TV turns off with it over HDMI-CEC
+(`hdmi_control_auto_device_off_enabled`, on on both SHIELDs). A toast warns a
+minute before; the timer is dropped if the screen turns off some other way.
+
+Long-press select on an action whose entities are all lights (light groups
+are lights too) for its light panel (`LightPanel`): a brightness bar (left /
+right in 5% steps, 0 turns them off) and white and colour swatches, offered
+as the lights' `supported_color_modes` allow. Every change is a
+`light.turn_on` on all of the action's lights; Back returns to quick actions.
 
 ### Cameras
 
@@ -82,9 +98,12 @@ a bundled Material Design Icons font in `app/src/main/assets/mdi/` (Apache
 `http://<shield-ip>:8080` (Office `192.168.1.209`, Livingroom `192.168.1.197`)
 edits pins, hidden apps, quick actions, hold time and the Home Assistant URL
 and token, live, per device. "From Home Assistant…" on an action lists your entities
-(filterable: automations, scenes, scripts, lights, …), then the services
-their domain offers (e.g. automation trigger / turn on / turn off / toggle),
-and fills in service, entity, label and icon. The SHIELD proxies
+(filterable: automations, scenes, scripts, lights, …); tick one or more of
+the same kind (say two lights, or several automations), then pick one of the
+services their domain offers (e.g. automation trigger / turn on / turn off /
+toggle). It fills in service, entities, label and icon; one press then acts on
+every ticked entity in a single call. Reopening it on an action starts from
+that action's entities, so more can be added. The SHIELD proxies
 `/api/states` and `/api/services` for it, so the browser never talks to Home
 Assistant directly and the token stays on the device. It is open to anyone on the LAN by choice; the
 token alone is write-only and never sent back. The server runs inside the
@@ -103,7 +122,7 @@ the APK**. The finished set in `output/backgrounds/` (WebPs and
 `manifest.json`) is committed, so a fresh clone builds with them. The build
 copies it into `assets/backgrounds/`. After regenerating, commit the changed
 images; new images or focal elements reach the TVs with the next
-`./build.sh install`. The full set makes the APK about 150 MB.
+`./build.sh install`. The full set makes the APK about 375 MB.
 
 | Input | Default entity | Gives |
 | --- | --- | --- |
@@ -111,16 +130,21 @@ images; new images or focal elements reach the TVs with the next
 | Sun | `sun.sun` | above/below_horizon → day/night |
 | Season | `sensor.season` (Season integration) | spring/summer/autumn/winter |
 
-- **Holidays win over weather.** The date ranges are editable on the config
-  page. Thanksgiving is computed (fourth Thursday of November, plus Friday) and
-  so is Easter; `12-31..01-01` wraps over New Year. If there's no image for the
-  holiday, it falls back to weather.
+- **Holidays win over weather**, shown in today's weather (a rainy Halloween)
+  when that image exists, else the clear holiday image. The date ranges are
+  editable on the config page. Thanksgiving is computed (fourth Thursday of
+  November, plus Friday) and so is Easter; `12-31..01-01` wraps over New Year.
+  If there's no image for the holiday, it falls back to weather.
 - **Focal element:** one per calendar day, rotating in name order through
   `focal_elements` from the bundled manifest. It's held all day, and a new one
   joins the rotation with the APK that carries it.
 - **Fallback chain:** exact image → same focal/season/time `clear` → another
   focal's season/time `clear` → plain black. A missing sun or season entity
   isn't guessed around; the config page says which one is missing.
+- **Under the date:** the weather entity's condition and temperature, then
+  its daily forecast (`weather.get_forecasts`): today's high, low and chance
+  of rain (snow on snowy days), or tomorrow's from 18:00. Either line is hidden
+  when Home Assistant has nothing for it.
 - **Refresh:** every 5 minutes while HOME is showing (the client is REST-only,
   no websocket), at midnight, and right after a settings change. It crossfades
   over 1.5 s, only when the chosen path changes.

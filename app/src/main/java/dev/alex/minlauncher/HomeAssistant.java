@@ -1,5 +1,6 @@
 package dev.alex.minlauncher;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -64,6 +65,23 @@ final class HomeAssistant {
     /** GET /api/camera_proxy/{entity} — the camera's current frame, usually JPEG. */
     static byte[] cameraSnapshot(String url, String token, String entityId) throws IOException {
         return raw(url, token, "GET", "/api/camera_proxy/" + entityId, null);
+    }
+
+    /**
+     * The daily forecast from weather.get_forecasts (the forecast attribute is
+     * gone from weather entities since 2024.3), oldest first; empty if none.
+     */
+    static JSONArray dailyForecast(String url, String token, String entityId) throws IOException {
+        try {
+            String body = new JSONObject().put("entity_id", entityId).put("type", "daily").toString();
+            JSONObject o = new JSONObject(request(url, token, "POST",
+                    "/api/services/weather/get_forecasts?return_response", body));
+            JSONObject e = o.getJSONObject("service_response").optJSONObject(entityId);
+            JSONArray f = e == null ? null : e.optJSONArray("forecast");
+            return f == null ? new JSONArray() : f;
+        } catch (JSONException e) {
+            throw new IOException("Bad forecast for " + entityId + ": " + e.getMessage());
+        }
     }
 
     /** POST /api/services/{domain}/{service} with the action's JSON data. */

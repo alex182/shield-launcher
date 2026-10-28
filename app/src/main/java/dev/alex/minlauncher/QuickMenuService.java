@@ -1,9 +1,16 @@
 package dev.alex.minlauncher;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.PixelFormat;
+import android.media.AudioManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -15,7 +22,13 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -44,6 +57,9 @@ public class QuickMenuService extends AccessibilityService {
     private static final int NETFLIX_KEY = KeyEvent.KEYCODE_BUTTON_12;
     /** A second press within this of the first release makes a double press. */
     private static final long DOUBLE_PRESS_MS = 350;
+    private static final long MINUTE_MS = 60_000;
+    /** Between going HOME (so players stop) and sleeping. */
+    private static final long SLEEP_AFTER_HOME_MS = 1500;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable holdReached = () -> { holdFired = true; showMenu(); };
@@ -52,8 +68,27 @@ public class QuickMenuService extends AccessibilityService {
     private WindowManager wm;
     private View panel;
     private CameraOverlay cameras;
+    private LightPanel lights;
     private Store store;
     private WebConfigServer web;
+
+    // Sleep timer: elapsedRealtime when it fires, 0 = off.
+    private long sleepAt;
+    private TextView sleepRow;
+    private TextView header;        // device name, plus the time left while the timer runs
+    private String deviceName = "";
+    private final Runnable sleepNow = this::sleepNow;
+    private final Runnable sleepWarning = () -> toast(getString(R.string.sleep_soon), true);
+    private final Runnable sleepRowTick = new Runnable() {
+        @Override public void run() {
+            updateSleepRow();
+            if (sleepAt != 0 && sleepRow != null) handler.postDelayed(this, MINUTE_MS);
+        }
+    };
+    /** Turned off some other way: the timer has nothing left to do. */
+    private final BroadcastReceiver screenOff = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) { cancelSleep(); }
+    };
 
     // Netflix-button gesture state.
     private boolean holdFired;       // this press already opened quick actions
@@ -66,8 +101,10 @@ public class QuickMenuService extends AccessibilityService {
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         store = new Store(this);
         cameras = new CameraOverlay(this, wm, store);
+        lights = new LightPanel(this, wm, store);
         web = new WebConfigServer(this, store);
         web.start();
+        registerReceiver(screenOff, new IntentFilter(Intent.ACTION_SCREEN_OFF));
     }
 
     @Override
@@ -123,8 +160,11 @@ public class QuickMenuService extends AccessibilityService {
     public void onDestroy() {
         handler.removeCallbacks(holdReached);
         handler.removeCallbacks(singlePress);
+        cancelSleep();
+        try { unregisterReceiver(screenOff); } catch (IllegalArgumentException ignored) { }
         hideMenu();
         if (cameras != null) cameras.shutdown();
+        if (lights != null) lights.shutdown();
         if (web != null) web.stop();
         calls.shutdownNow();
         super.onDestroy();
@@ -157,14 +197,25 @@ public class QuickMenuService extends AccessibilityService {
         box.addView(title);
 
         String name = Settings.Global.getString(getContentResolver(), Settings.Global.DEVICE_NAME);
+        deviceName = name == null ? "" : name.toUpperCase();
         TextView sub = new TextView(this);
-        sub.setText(name == null ? "" : name.toUpperCase());
+        header = sub;
+        sub.setText(deviceName);
         sub.setTextSize(14);
         sub.setTextColor(getResources().getColor(R.color.dim));
         sub.setPadding(0, dp(2), 0, dp(24));
         box.addView(sub);
 
         for (Store.Action action : store.actions()) box.addView(makeRow(action));
+        if (store.sleepShown()) {
+            // Takes the leftover height, so Sleep sits at the very bottom of the pane.
+            box.addView(new View(this), new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+            sleepRow = makeRow(Icons.withLabel(this, "mdi:power-sleep", ""), v -> toggleSleep());
+            box.addView(sleepRow);
+            updateSleepRow();
+            if (sleepAt != 0) handler.postDelayed(sleepRowTick, MINUTE_MS);
+        }
 
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 dp(420), ViewGroup.LayoutParams.MATCH_PARENT,
@@ -178,19 +229,37 @@ public class QuickMenuService extends AccessibilityService {
         panel = box;
         wm.addView(panel, lp);
         // As in MainActivity, focus only sticks once the views are laid out.
-        box.post(() -> { if (box.getChildCount() > 2) box.getChildAt(2).requestFocus(); });
+        box.post(() -> {
+            for (int i = 2; i < box.getChildCount(); i++) {
+                if (box.getChildAt(i).isFocusable()) { box.getChildAt(i).requestFocus(); break; }
+            }
+        });
     }
 
     private void hideMenu() {
+        if (lights != null) lights.hide();
+        handler.removeCallbacks(sleepRowTick);
+        sleepRow = null;
+        header = null;
         if (panel == null) return;
         wm.removeView(panel);
         panel = null;
     }
 
-    @SuppressWarnings("deprecation")
     private TextView makeRow(Store.Action action) {
+        TextView t = makeRow(Icons.withLabel(this, action.icon, action.label), v -> runAction(action));
+        // Long press on an action whose entities are all lights: brightness and colour.
+        List<String> ids = entityIds(action);
+        if (Lights.allLights(ids)) {
+            t.setOnLongClickListener(v -> { lights.show(action.label, ids); return true; });
+        }
+        return t;
+    }
+
+    @SuppressWarnings("deprecation")
+    private TextView makeRow(CharSequence text, View.OnClickListener onClick) {
         TextView t = new TextView(this);
-        t.setText(Icons.withLabel(this, action.icon, action.label));
+        t.setText(text);
         t.setTextSize(20);
         t.setTextColor(getResources().getColorStateList(R.color.row_text));
         t.setBackgroundResource(R.drawable.row_bg);
@@ -201,12 +270,12 @@ public class QuickMenuService extends AccessibilityService {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(2);
         t.setLayoutParams(lp);
-        t.setOnClickListener(v -> runAction(action));
+        t.setOnClickListener(onClick);
         return t;
     }
 
+    /** The panel stays up, so several actions can run in a row; Back or the Netflix button closes it. */
     private void runAction(Store.Action action) {
-        hideMenu();
         if (action.service.isEmpty()) {
             toast(getString(R.string.action_placeholder, action.label));
             return;
@@ -225,8 +294,92 @@ public class QuickMenuService extends AccessibilityService {
         });
     }
 
+    // ------------------------------------------------------------------ sleep
+
+    private void toggleSleep() {
+        if (sleepAt != 0) {
+            cancelSleep();
+            toast(getString(R.string.sleep_cancelled));
+        } else {
+            int minutes = store.sleepMinutes();
+            sleepAt = SystemClock.elapsedRealtime() + minutes * MINUTE_MS;
+            handler.postDelayed(sleepNow, minutes * MINUTE_MS);
+            if (minutes > 1) handler.postDelayed(sleepWarning, (minutes - 1) * MINUTE_MS);
+            handler.removeCallbacks(sleepRowTick);
+            handler.postDelayed(sleepRowTick, MINUTE_MS);
+            toast(getString(R.string.sleep_set, minutes));
+        }
+        updateSleepRow();
+    }
+
+    private void cancelSleep() {
+        sleepAt = 0;
+        handler.removeCallbacks(sleepNow);
+        handler.removeCallbacks(sleepWarning);
+        handler.removeCallbacks(sleepRowTick);
+        updateSleepRow();
+    }
+
+    /** The Sleep row, and the header's "· SLEEP IN 42 MIN" while the timer runs. */
+    private void updateSleepRow() {
+        long minutesLeft = sleepAt == 0 ? 0
+                : Math.max(1, (sleepAt - SystemClock.elapsedRealtime() + MINUTE_MS - 1) / MINUTE_MS);
+        if (header != null) {
+            header.setText(sleepAt == 0 ? deviceName : deviceName
+                    + (deviceName.isEmpty() ? "" : " · ")
+                    + getString(R.string.sleep_header, minutesLeft).toUpperCase());
+        }
+        if (sleepRow == null) return;
+        String label = sleepAt == 0 ? getString(R.string.sleep_start, store.sleepMinutes())
+                : getString(R.string.sleep_running, minutesLeft);
+        sleepRow.setText(Icons.withLabel(this, "mdi:power-sleep", label));
+    }
+
+    /**
+     * Stops playback, then sleeps the SHIELD. Sleeping also turns the TV off
+     * over HDMI-CEC, as long as the SHIELD's "turn off TV" CEC setting is on.
+     */
+    private void sleepNow() {
+        sleepAt = 0;
+        hideMenu();
+        cameras.hide();
+        AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        for (int key : new int[] { KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP }) {
+            audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, key));
+            audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, key));
+        }
+        // Players that ignore media keys still stop when they leave the screen.
+        performGlobalAction(GLOBAL_ACTION_HOME);
+        // On API 28+ this puts the device to sleep, not just behind a keyguard.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            handler.postDelayed(() -> performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN), SLEEP_AFTER_HOME_MS);
+        }
+    }
+
+    /** The action's entity_id: one ID or a list; empty if it has none or the data is not JSON. */
+    private static List<String> entityIds(Store.Action action) {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONObject data = new JSONObject(action.data.trim().isEmpty() ? "{}" : action.data);
+            Object id = data.opt("entity_id");
+            if (id instanceof String) {
+                out.add((String) id);
+            } else if (id instanceof JSONArray) {
+                JSONArray a = (JSONArray) id;
+                for (int i = 0; i < a.length(); i++) out.add(a.getString(i));
+            }
+        } catch (JSONException e) {
+            out.clear();
+        }
+        return out;
+    }
+
     private void toast(String msg) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        toast(msg, false);
+    }
+
+    private void toast(String msg, boolean longer) {
+        Toast.makeText(this, msg, longer ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
     }
 
     private int dp(int v) {

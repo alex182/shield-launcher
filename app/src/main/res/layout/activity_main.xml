@@ -48,12 +48,26 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:textSize="16sp"
-            android:textColor="@color/dim"
-            android:fontFamily="sans-serif"
-            android:shadowColor="@color/text_shadow"
+            android:textSize="18sp"
+            android:textColor="@color/subtitle"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="@color/subtitle_shadow"
             android:shadowDy="1"
-            android:shadowRadius="6" />
+            android:shadowRadius="8" />
+
+        <!-- Daily forecast from Home Assistant; gone when there is none. -->
+        <TextView
+            android:id="@+id/forecast"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            android:textSize="18sp"
+            android:textColor="@color/subtitle"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="@color/subtitle_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="8" />
 
         <!-- Current weather from Home Assistant; gone when there is none. -->
         <TextView
@@ -62,12 +76,12 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:visibility="gone"
-            android:textSize="16sp"
-            android:textColor="@color/dim"
-            android:fontFamily="sans-serif"
-            android:shadowColor="@color/text_shadow"
+            android:textSize="18sp"
+            android:textColor="@color/subtitle"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="@color/subtitle_shadow"
             android:shadowDy="1"
-            android:shadowRadius="6" />
+            android:shadowRadius="8" />
 
         <ScrollView
             android:id="@+id/scroller"
