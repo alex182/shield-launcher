@@ -10,4 +10,6 @@
          bright sky. dim is for text on plain black. -->
     <color name="subtitle">#FFD6D6D6</color>
     <color name="subtitle_shadow">#FF000000</color>
+    <!-- Screensaver: black over the picture to dim it, 45%. -->
+    <color name="dream_dim">#73000000</color>
 </resources>

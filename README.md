@@ -25,7 +25,7 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`; `TileFlow` (wrapping banner row) |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `TileFlow` (wrapping banner row) |
 | `app/src/test/` | JVM unit tests (`Backgrounds`, `TileFlow` wrapping); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
@@ -217,6 +217,32 @@ images; new images or focal elements reach the TVs with the next
   - Its Preview controls force focal/season/time/weather/holiday, or "None" to
     preview weather during a holiday. Set them back to Automatic afterwards.
   - Every pick is logged: `adb logcat -s Backgrounds`.
+
+## Screensaver
+
+`BackgroundDream` is an Android screensaver ("Flint Hills"): the home screen's
+background full screen, with the clock, date, forecast and current weather in
+the image's quiet left side. It picks and refreshes the image the same way
+HOME does (same focal element, season, time, weather and holiday, crossfading
+when they change). The picture is dimmed with 45% black (`dream_dim` in
+`colors.xml`; a SHIELD can't dim the TV itself), and the text drifts a little
+every minute, mostly up and down, so it stays in the dark left edge and
+nothing stays still on the panel. Any key wakes it.
+
+Pick it on the SHIELD under Settings → Device Preferences → Screen saver, or
+over adb:
+
+```bash
+adb -s <shield> shell settings put secure screensaver_components dev.alex.minlauncher/.BackgroundDream
+adb -s <shield> shell am start -n com.android.systemui/.Somnambulator   # try it now
+```
+
+Both SHIELDs used Google's Backdrop
+(`com.google.android.backdrop/.Backdrop`) before; put that back to undo.
+`./build.sh install` doesn't change the screensaver setting. Developer
+options → **Stay awake** (`stay_on_while_plugged_in`) stops any screensaver
+from starting, because the device is never idle; it is off on both SHIELDs
+since 2026-10-28, so they also sleep after their sleep timeout again.
 
 ## Things that will bite you
 

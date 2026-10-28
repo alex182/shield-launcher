@@ -56,5 +56,18 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/quick_menu_service" />
         </service>
+
+        <!-- Screensaver: the background with the clock. Picked in Settings →
+             Device Preferences → Screen saver, or over adb; see README. -->
+        <service
+            android:name=".BackgroundDream"
+            android:label="@string/dream_name"
+            android:exported="true"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
