@@ -4,4 +4,6 @@
     <color name="dim">#FF6E6E6E</color>
     <color name="focus">#FFFFFFFF</color>
     <color name="focus_text">#FF000000</color>
+    <!-- Behind text drawn over background images. -->
+    <color name="text_shadow">#CC000000</color>
 </resources>

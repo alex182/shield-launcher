@@ -61,6 +61,13 @@
   .result.ok { color: var(--ok); } .result.bad { color: var(--bad); }
   .inline { display: flex; gap: 8px; align-items: center; }
   .inline input[type=number] { width: 90px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 14px; }
+  .grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 10px; }
+  .now { font-size: 13px; padding: 10px 12px; background: var(--field); border-radius: 8px; word-break: break-word; }
+  .now code { color: var(--fg); }
+  .now .why { color: var(--dim); display: block; margin-top: 2px; }
+  .now .bad { color: var(--bad); display: block; margin-top: 2px; }
+  h3.sub { font-size: 13px; font-weight: 600; margin: 18px 0 0; color: var(--fg); }
   .check { display: flex; gap: 6px; align-items: center; color: var(--dim); font-size: 13px; margin-top: 8px; }
   .check input { width: auto; }
   .mdi { font-family: "mdi"; font-style: normal; line-height: 1; }
@@ -98,7 +105,7 @@
   .pick .state { color: var(--dim); font-size: 12px; flex: none; }
   @media (max-width: 640px) {
     header { padding: 12px 16px; flex-wrap: wrap; }
-    .grid { grid-template-columns: 1fr; }
+    .grid, .grid3, .grid5 { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -163,6 +170,69 @@
       <button id="cameras-load">Load cameras from Home Assistant</button>
     </div>
     <div class="result" id="cameras-result"></div>
+  </section>
+
+  <section>
+    <h2>Background</h2>
+    <p class="hint">One of the images bundled with the launcher, chosen from Home Assistant's weather, sun and season
+      and the date. Checked every 5 minutes while the home screen is showing.</p>
+    <div class="now" id="bg-now">Nothing yet.</div>
+
+    <h3 class="sub">Entities</h3>
+    <div class="grid3">
+      <div>
+        <label for="bg-weather">Weather</label>
+        <input id="bg-weather" placeholder="weather.home" spellcheck="false">
+      </div>
+      <div>
+        <label for="bg-sun">Sun (day / night)</label>
+        <input id="bg-sun" placeholder="sun.sun" spellcheck="false">
+      </div>
+      <div>
+        <label for="bg-season">Season</label>
+        <input id="bg-season" placeholder="sensor.season" spellcheck="false">
+      </div>
+    </div>
+
+    <h3 class="sub">Holidays</h3>
+    <p class="hint" style="margin:4px 0 0">One per line, <code>name: from..to</code> or a single day; the first match wins
+      and replaces the weather image. Days are <code>MM-DD</code>, <code>thanksgiving</code> (fourth Thursday of
+      November) or <code>easter</code>, optionally <code>+N</code>/<code>-N</code> days. A range like
+      <code>12-31..01-01</code> wraps over New Year. Names match the image folders.</p>
+    <textarea id="bg-holidays" spellcheck="false" style="min-height:170px; margin-top:8px"></textarea>
+    <div class="inline" style="margin-top:8px"><button id="bg-holidays-reset">Restore defaults</button></div>
+
+    <h3 class="sub">Readability and layout</h3>
+    <div class="grid">
+      <div>
+        <label for="bg-scrim-day">Darkening at the left edge, day (%)</label>
+        <input type="number" id="bg-scrim-day" min="0" max="100" step="5">
+      </div>
+      <div>
+        <label for="bg-scrim-night">Darkening at the left edge, night (%)</label>
+        <input type="number" id="bg-scrim-night" min="0" max="100" step="5">
+      </div>
+      <div>
+        <label for="bg-scrim-end">Darkening fades out by (% of width)</label>
+        <input type="number" id="bg-scrim-end" min="0" max="100" step="5">
+      </div>
+      <div>
+        <label for="bg-content-width">Apps and lists stay left of (% of width)</label>
+        <input type="number" id="bg-content-width" min="30" max="100" step="5">
+      </div>
+    </div>
+
+    <h3 class="sub">Preview (debug override)</h3>
+    <p class="hint" style="margin:4px 0 0">Forces parts of the choice, to see any image without waiting for the weather.
+      Leave on Automatic for normal use; the TV switches a moment after saving.</p>
+    <div class="grid5">
+      <div><label for="ov-focal">Focal</label><select id="ov-focal"></select></div>
+      <div><label for="ov-season">Season</label><select id="ov-season"></select></div>
+      <div><label for="ov-time">Time</label><select id="ov-time"></select></div>
+      <div><label for="ov-condition">Weather</label><select id="ov-condition"></select></div>
+      <div><label for="ov-holiday">Holiday</label><select id="ov-holiday"></select></div>
+    </div>
+    <div class="inline" style="margin-top:10px"><button id="ov-clear">All automatic</button></div>
   </section>
 
   <section>
@@ -418,9 +488,64 @@ async function load() {
   $('ha-token').placeholder = state.haTokenSet ? 'Saved. Leave blank to keep it' : 'Not set';
   $('ha-clear').checked = false;
   $('clear-wrap').style.display = state.haTokenSet ? '' : 'none';
+  loadBackground(state.background);
   render();
   markSaved('Saved');
 }
+
+// ------------------------------------------------------------- background
+
+const OVERRIDES = ['focal', 'season', 'time', 'condition', 'holiday'];
+
+function loadBackground(bg) {
+  $('bg-weather').value = bg.weather;
+  $('bg-sun').value = bg.sun;
+  $('bg-season').value = bg.season;
+  $('bg-holidays').value = bg.holidays;
+  $('bg-scrim-day').value = bg.scrimDay;
+  $('bg-scrim-night').value = bg.scrimNight;
+  $('bg-scrim-end').value = bg.scrimEnd;
+  $('bg-content-width').value = bg.contentWidth;
+  const st = bg.status || {};
+  const lists = {focal: st.focals || [], season: bg.seasons, time: bg.times, condition: bg.conditions};
+  for (const k of OVERRIDES) {
+    const current = (bg.override || {})[k] || '';
+    const opts = k === 'holiday' ? ['none', ...holidayNames()] : lists[k];
+    const all = current && !opts.includes(current) ? [...opts, current] : opts;
+    $('ov-' + k).innerHTML = '<option value="">Automatic</option>' +
+      all.map(v => `<option value="${esc(v)}">${esc(k === 'holiday' && v === 'none' ? 'None (weather)' : v)}</option>`).join('');
+    $('ov-' + k).value = current;
+  }
+  renderNow(st);
+}
+
+function renderNow(st) {
+  const when = st.at ? new Date(st.at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'}) : '';
+  $('bg-now').innerHTML = st.at === undefined ? 'Nothing yet: open the home screen on the TV.' :
+    (st.path !== undefined ? (st.path ? `Showing <code>${esc(st.path)}</code>` : 'Showing the plain default background') : 'No change') +
+    ` <span style="color:var(--dim)">(${esc(when)})</span>` +
+    (st.reason ? `<span class="why">${esc(st.reason)}</span>` : '') +
+    (st.error ? `<span class="bad">${esc(st.error)}</span>` : '');
+}
+
+/** Holiday names from the rules being edited, for the preview list. */
+function holidayNames() {
+  return $('bg-holidays').value.split('\n').map(l => (l.match(/^\s*([a-z0-9_]+)\s*:/) || [])[1]).filter(Boolean);
+}
+
+function backgroundFields() {
+  const override = {};
+  for (const k of OVERRIDES) if ($('ov-' + k).value) override[k] = $('ov-' + k).value;
+  return {
+    weather: $('bg-weather').value.trim(), sun: $('bg-sun').value.trim(), season: $('bg-season').value.trim(),
+    holidays: $('bg-holidays').value, override,
+    scrimDay: +$('bg-scrim-day').value, scrimNight: +$('bg-scrim-night').value,
+    scrimEnd: +$('bg-scrim-end').value, contentWidth: +$('bg-content-width').value,
+  };
+}
+
+$('bg-holidays-reset').onclick = () => { $('bg-holidays').value = state.background.defaultHolidays; markDirty(); };
+$('ov-clear').onclick = () => { for (const k of OVERRIDES) $('ov-' + k).value = ''; markDirty(); };
 
 function label(pkg) {
   const a = state.apps.find(a => a.pkg === pkg);
@@ -570,7 +695,8 @@ document.addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.field;
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
-  if (f || ['hold', 'single-press', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)) markDirty();
+  if (f || ['hold', 'single-press', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
+      || /^(bg|ov)-/.test(e.target.id)) markDirty();
 });
 
 $('add-action').onclick = () => {
@@ -624,15 +750,21 @@ $('save').onclick = async () => {
     singlePress: $('single-press').value,
     cameras: draft.cameras,
     haUrl: $('ha-url').value.trim(),
+    background: backgroundFields(),
   };
   if ($('ha-clear').checked) body.clearToken = true;
   else if ($('ha-token').value.trim()) body.haToken = $('ha-token').value.trim();
   $('save').disabled = true;
   $('status').textContent = 'Saving…';
   try {
-    await post('/api/state', body);
+    const r = await post('/api/state', body);
+    if (r.error) throw new Error(r.error);
     await load();
     markSaved('Saved ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+    // The TV re-picks its background a moment after a save; show what it chose.
+    setTimeout(async () => {
+      try { renderNow((await (await fetch('/api/state')).json()).background.status || {}); } catch (err) { }
+    }, 4000);
   } catch (err) {
     $('status').textContent = 'Save failed: ' + err.message;
     $('save').disabled = false;

@@ -39,9 +39,35 @@ android {
         // 30 to match the device and avoid API-31 behaviour changes.
         disable "ExpiredTargetSdkVersion"
     }
+    // The WebPs are compressed already; zipping them again only slows decoding.
+    androidResources {
+        noCompress += "webp"
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+// Background images from scripts/generate_backgrounds.py ship in the APK as
+// assets/backgrounds/ (WebPs + manifest.json). output/ is gitignored, so
+// generate them before building; without them the launcher stays black.
+def bgSource = rootProject.file("output/backgrounds")
+def bgAssets = layout.buildDirectory.dir("generated/background-assets").get().asFile
+def syncBackgrounds = tasks.register("syncBackgrounds", Sync) {
+    from(bgSource) { include "manifest.json", "**/*.webp" }
+    into(new File(bgAssets, "backgrounds"))
+    doLast {
+        if (!new File(bgSource, "manifest.json").exists()) {
+            logger.warn("No ${bgSource}/manifest.json: building without backgrounds")
+        }
+    }
+}
+android.sourceSets.main.assets.srcDir(bgAssets)
+tasks.named("preBuild") { dependsOn syncBackgrounds }
+
+// Unit tests only (Backgrounds' pure logic, run on the JVM); nothing ships in the APK.
+dependencies {
+    testImplementation "junit:junit:4.13.2"
 }

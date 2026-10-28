@@ -3,7 +3,7 @@
 Flat, layered Kansas Flint Hills backgrounds for the launcher, one per
 season × day/night × weather condition, plus holidays. They're generated
 locally with FLUX.2 Klein 4B in ComfyUI (Docker, RTX 3080), upscaled to 4K
-and shipped to the device with the launcher.
+and shipped to the SHIELDs inside the launcher's APK.
 
 ## ComfyUI
 
@@ -46,7 +46,7 @@ Things worth knowing:
 | `scripts/backgrounds/workflows/` | API-format workflows the script submits |
 | `scripts/backgrounds/chosen_base.png` | The chosen base landscape (+ `chosen_base.json` with its seed). Committed: everything is built from it. |
 | `output/work/` | Intermediate images for every stage (1344×768 PNG) |
-| `output/backgrounds/` | Finals (3840×2160 WebP q90) and `manifest.json`; this is what goes on the device |
+| `output/backgrounds/` | Finals (3840×2160 WebP q90) and `manifest.json`; bundled into the APK by `./build.sh` |
 | `output/review/` | Contact sheets for picking the base and checking the preview |
 
 `comfyui/*` (except the compose file) and `output/` are gitignored.
@@ -190,7 +190,8 @@ automatically.
 
 ## Getting them onto the device
 
-There's no publish step: the images ship to the SHIELD with the launcher.
-Everything the launcher needs is in `output/backgrounds/`: the WebPs and
-`manifest.json`, whose `files` list is relative to that folder. The full
-windmill set is about 145 MB (86 files, ~1.7 MB each).
+They ship in the launcher's APK. `./build.sh` copies `output/backgrounds/`
+(the WebPs and `manifest.json`) into `assets/backgrounds/`, and
+`./build.sh install` puts them on every SHIELD. After generating new images or
+a new focal element, rebuild and install. The full windmill set is about 145 MB
+(86 files, ~1.7 MB each), so the APK is about 150 MB.

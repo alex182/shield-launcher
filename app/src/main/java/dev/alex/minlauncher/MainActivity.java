@@ -16,7 +16,6 @@ import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -41,38 +40,83 @@ import java.util.Set;
  *
  * Pins and hidden apps are edited from the remote (long-press any app) or the
  * web config page, and stored per device, so one APK serves every SHIELD.
+ *
+ * Behind it all sits a weather/season/holiday image from Home Assistant
+ * ({@link BackgroundController}); the content keeps to the left of the
+ * screen so the image's focal element on the right stays clear.
  */
 public class MainActivity extends Activity {
 
-    private LinearLayout rows;
+    /** Shadow behind list text, so it reads over bright background images. */
+    private static final float TEXT_SHADOW_RADIUS = 6;
+
+    private LinearLayout content, rows;
     private ScrollView scroller;
     private TextView clock, date;
     private BroadcastReceiver timeTick;
     private Store store;
+    private BackgroundController background;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable rebuild = this::rebuildKeepingFocus;
-    /** Pins and hides can change from the web page while this is showing. */
+    private final Runnable refreshBackground = () -> background.refresh();
+    /** Pins, hides and background settings can change from the web page while this is showing. */
     private final SharedPreferences.OnSharedPreferenceChangeListener prefsChanged =
             (p, key) -> {
-                if (!Store.KEY_PINNED.equals(key) && !Store.KEY_HIDDEN.equals(key)) return;
-                handler.removeCallbacks(rebuild);
-                handler.post(rebuild);   // one rebuild per batch of web edits
+                if (key == null) return;
+                switch (key) {
+                    case Store.KEY_CONTENT_WIDTH:
+                        applyContentWidth();
+                        // fall through: the divider length depends on it
+                    case Store.KEY_PINNED:
+                    case Store.KEY_HIDDEN:
+                        handler.removeCallbacks(rebuild);
+                        handler.post(rebuild);   // one rebuild per batch of web edits
+                        break;
+                    case Store.KEY_SCRIM_DAY:
+                    case Store.KEY_SCRIM_NIGHT:
+                    case Store.KEY_SCRIM_END:
+                        background.applyScrim();
+                        break;
+                    case Store.KEY_HA_URL:
+                    case Store.KEY_HA_TOKEN:
+                    case Store.KEY_BG_WEATHER:
+                    case Store.KEY_BG_SUN:
+                    case Store.KEY_BG_SEASON:
+                    case Store.KEY_BG_HOLIDAYS:
+                    case Store.KEY_BG_OVERRIDE:
+                        handler.removeCallbacks(refreshBackground);
+                        handler.post(refreshBackground);
+                        break;
+                    default:   // including the controller's own status writes
+                }
             };
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_main);
+        content = findViewById(R.id.content);
         rows = findViewById(R.id.rows);
         scroller = findViewById(R.id.scroller);
         clock = findViewById(R.id.clock);
         date = findViewById(R.id.date);
 
         store = new Store(this);
+        background = new BackgroundController(this, store,
+                findViewById(R.id.background), findViewById(R.id.scrim));
 
         timeTick = new BroadcastReceiver() {
-            @Override public void onReceive(Context c, Intent i) { updateClock(); }
+            @Override public void onReceive(Context c, Intent i) {
+                updateClock();
+                background.onTimeTick();
+            }
         };
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        background.shutdown();
     }
 
     @Override
@@ -82,8 +126,10 @@ public class MainActivity extends Activity {
         // ACTION_TIME_TICK only arrives while registered at runtime; it cannot
         // be declared in the manifest.
         registerReceiver(timeTick, new IntentFilter(Intent.ACTION_TIME_TICK));
+        applyContentWidth();
         buildList(null);   // rebuild so installs/uninstalls show up immediately
         store.prefs().registerOnSharedPreferenceChangeListener(prefsChanged);
+        background.start();
     }
 
     @Override
@@ -91,6 +137,23 @@ public class MainActivity extends Activity {
         super.onPause();
         try { unregisterReceiver(timeTick); } catch (IllegalArgumentException ignored) { }
         store.prefs().unregisterOnSharedPreferenceChangeListener(prefsChanged);
+        background.stop();
+    }
+
+    /** Keeps tiles and lists in the left {@link Store#contentWidth()}% of the screen. */
+    private void applyContentWidth() {
+        content.setPadding(content.getPaddingLeft(), content.getPaddingTop(), contentRightPx(),
+                content.getPaddingBottom());
+    }
+
+    private int contentRightPx() {
+        int screen = getResources().getDisplayMetrics().widthPixels;
+        return Math.max(dp(64), screen - screen * store.contentWidth() / 100);
+    }
+
+    /** Width available to the rows, between the gutters. */
+    private int contentWidthPx() {
+        return getResources().getDisplayMetrics().widthPixels - content.getPaddingLeft() - contentRightPx();
     }
 
     private void updateClock() {
@@ -121,18 +184,15 @@ public class MainActivity extends Activity {
         for (App a : all.values()) (hiddenPkgs.contains(a.pkg) ? hiddenApps : rest).add(a);
 
         if (!pins.isEmpty()) {
-            LinearLayout strip = new LinearLayout(this);
-            strip.setOrientation(LinearLayout.HORIZONTAL);
+            // Wraps at the content edge instead of scrolling sideways into the
+            // background's focal element.
+            TileFlow strip = new TileFlow(this);
             strip.setClipChildren(false);
-            for (App a : pins) strip.addView(makeBanner(a));
-            HorizontalScrollView hs = new HorizontalScrollView(this);
-            hs.setHorizontalScrollBarEnabled(false);
-            hs.setClipChildren(false);
-            hs.setClipToPadding(false);
+            strip.setClipToPadding(false);
             // Room for the focused banner to scale up without being clipped.
-            hs.setPadding(dp(8), dp(10), dp(8), dp(4));
-            hs.addView(strip);
-            rows.addView(hs);
+            strip.setPadding(dp(8), dp(10), dp(8), dp(4));
+            for (App a : pins) strip.addView(makeBanner(a));
+            rows.addView(strip);
             addDivider();
         }
 
@@ -170,7 +230,8 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
         lp.topMargin = dp(14);
         lp.bottomMargin = dp(14);
-        lp.rightMargin = dp(420);
+        // A short rule, at most 412dp, whatever the content width.
+        lp.rightMargin = Math.max(0, contentWidthPx() - dp(412));
         v.setLayoutParams(lp);
         v.setBackgroundColor(0xFF1E1E1E);
         rows.addView(v);
@@ -187,6 +248,10 @@ public class MainActivity extends Activity {
         t.setFocusableInTouchMode(true);
         t.setSingleLine(true);
         t.setPadding(dp(18), dp(10), dp(18), dp(10));
+        // No shadow while focused: the text is black on the white focus fill.
+        t.setShadowLayer(TEXT_SHADOW_RADIUS, 0, 1, getResources().getColor(R.color.text_shadow));
+        t.setOnFocusChangeListener((v, has) -> t.setShadowLayer(has ? 0 : TEXT_SHADOW_RADIUS, 0, 1,
+                getResources().getColor(R.color.text_shadow)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(2);
@@ -241,9 +306,10 @@ public class MainActivity extends Activity {
             tile.addView(label);
         }
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+        ViewGroup.MarginLayoutParams lp = new ViewGroup.MarginLayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = dp(16);
+        lp.bottomMargin = dp(16);   // between wrapped rows
         tile.setLayoutParams(lp);
         return tile;
     }

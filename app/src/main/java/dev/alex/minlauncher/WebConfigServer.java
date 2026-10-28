@@ -232,10 +232,35 @@ final class WebConfigServer implements Runnable {
                 .put("singlePress", store.singlePress())
                 .put("cameras", new JSONArray(store.cameras()))
                 .put("haUrl", store.haUrl())
-                .put("haTokenSet", !store.haToken().isEmpty());
+                .put("haTokenSet", !store.haToken().isEmpty())
+                .put("background", background());
+    }
+
+    private JSONObject background() throws JSONException {
+        return new JSONObject()
+                .put("weather", store.bgWeather())
+                .put("sun", store.bgSun())
+                .put("season", store.bgSeason())
+                .put("holidays", store.bgHolidays())
+                .put("defaultHolidays", Backgrounds.DEFAULT_HOLIDAYS)
+                .put("override", new JSONObject(store.bgOverrideJson()))
+                .put("scrimDay", store.scrimDay())
+                .put("scrimNight", store.scrimNight())
+                .put("scrimEnd", store.scrimEnd())
+                .put("contentWidth", store.contentWidth())
+                .put("status", new JSONObject(store.bgStatus()))
+                .put("seasons", new JSONArray(Backgrounds.SEASONS))
+                .put("times", new JSONArray(Backgrounds.TIMES))
+                .put("conditions", new JSONArray(Backgrounds.CONDITIONS));
     }
 
     private void save(JSONObject o) throws JSONException {
+        JSONObject bg = o.optJSONObject("background");
+        // Checked before anything is written, so a typo saves nothing.
+        if (bg != null && bg.has("holidays")) {
+            List<String> errors = Backgrounds.parseHolidays(bg.getString("holidays")).errors;
+            if (!errors.isEmpty()) throw new JSONException("Holidays: " + errors.get(0));
+        }
         if (o.has("pinned")) store.setPinned(strings(o.getJSONArray("pinned")));
         if (o.has("hidden")) store.setHidden(new HashSet<>(strings(o.getJSONArray("hidden"))));
         if (o.has("actions")) {
@@ -250,6 +275,23 @@ final class WebConfigServer implements Runnable {
         if (o.has("haUrl")) store.setHaUrl(o.getString("haUrl").trim());
         if (o.optBoolean("clearToken")) store.setHaToken("");
         else if (!o.optString("haToken").isEmpty()) store.setHaToken(o.getString("haToken").trim());
+        if (bg != null) {
+            JSONObject override = bg.optJSONObject("override");
+            store.setBackground(trimmed(bg, "weather"), trimmed(bg, "sun"), trimmed(bg, "season"),
+                    bg.has("holidays") ? bg.getString("holidays") : null,
+                    override == null ? null : override.toString());
+            if (bg.has("scrimDay")) store.setPercent(Store.KEY_SCRIM_DAY, bg.getInt("scrimDay"));
+            if (bg.has("scrimNight")) store.setPercent(Store.KEY_SCRIM_NIGHT, bg.getInt("scrimNight"));
+            if (bg.has("scrimEnd")) store.setPercent(Store.KEY_SCRIM_END, bg.getInt("scrimEnd"));
+            // Below 30% there is no room for a banner.
+            if (bg.has("contentWidth")) {
+                store.setPercent(Store.KEY_CONTENT_WIDTH, Math.max(30, bg.getInt("contentWidth")));
+            }
+        }
+    }
+
+    private static String trimmed(JSONObject o, String key) throws JSONException {
+        return o.has(key) ? o.getString(key).trim() : null;
     }
 
     private static List<String> strings(JSONArray a) throws JSONException {

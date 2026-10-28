@@ -4,8 +4,25 @@
     android:layout_height="match_parent"
     android:background="@color/bg">
 
-    <!-- TV overscan-safe gutters -->
+    <!-- Weather/season/holiday image from Home Assistant (BackgroundController). -->
+    <ImageView
+        android:id="@+id/background"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:importantForAccessibility="no" />
+
+    <!-- Darkens the left side so the text over it stays readable. -->
+    <dev.alex.minlauncher.Scrim
+        android:id="@+id/scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- TV overscan-safe gutters. The right padding is set in code: it keeps
+         the content in the left part of the screen, clear of the image's
+         focal element. -->
     <LinearLayout
+        android:id="@+id/content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
@@ -21,7 +38,10 @@
             android:textSize="64sp"
             android:textColor="@color/fg"
             android:fontFamily="sans-serif-thin"
-            android:letterSpacing="-0.02" />
+            android:letterSpacing="-0.02"
+            android:shadowColor="@color/text_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="6" />
 
         <TextView
             android:id="@+id/date"
@@ -31,7 +51,10 @@
             android:layout_marginBottom="28dp"
             android:textSize="16sp"
             android:textColor="@color/dim"
-            android:fontFamily="sans-serif" />
+            android:fontFamily="sans-serif"
+            android:shadowColor="@color/text_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="6" />
 
         <ScrollView
             android:id="@+id/scroller"

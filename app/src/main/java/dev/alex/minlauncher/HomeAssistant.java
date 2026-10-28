@@ -1,5 +1,8 @@
 package dev.alex.minlauncher;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,6 +22,12 @@ final class HomeAssistant {
 
     private HomeAssistant() { }
 
+    /** An error status from Home Assistant, so callers can tell 404 from a dead network. */
+    static final class HttpError extends IOException {
+        final int code;
+        HttpError(int code, String message) { super(message); this.code = code; }
+    }
+
     /** GET /api/ — "API running." when the URL and token are good. */
     static String ping(String url, String token) throws IOException {
         return request(url, token, "GET", "/api/", null);
@@ -32,6 +41,19 @@ final class HomeAssistant {
     /** GET /api/services — each domain's services, with descriptions. */
     static String services(String url, String token) throws IOException {
         return request(url, token, "GET", "/api/services", null);
+    }
+
+    /** GET /api/states/{entity} — its state string, or null if there is no such entity. */
+    static String entityState(String url, String token, String entityId) throws IOException {
+        try {
+            return new JSONObject(request(url, token, "GET", "/api/states/" + entityId, null))
+                    .optString("state", null);
+        } catch (HttpError e) {
+            if (e.code == 404) return null;
+            throw e;
+        } catch (JSONException e) {
+            throw new IOException("Bad state for " + entityId + ": " + e.getMessage());
+        }
     }
 
     /** GET /api/camera_proxy/{entity} — the camera's current frame, usually JPEG. */
@@ -80,7 +102,7 @@ final class HomeAssistant {
             InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream();
             byte[] bytes = in == null ? new byte[0] : readBytes(in);
             if (code >= 400) {
-                throw new IOException("HTTP " + code + " "
+                throw new HttpError(code, "HTTP " + code + " "
                         + new String(bytes, StandardCharsets.UTF_8).trim());
             }
             return bytes;

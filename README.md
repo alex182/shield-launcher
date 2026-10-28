@@ -1,16 +1,17 @@
 # SHIELD Minimal Launcher
 
 A minimal dark home screen for NVIDIA SHIELD Android TV (`mdarcy`, Android 11 /
-API 30). Clock, pinned apps as banners, then everything else alphabetically. No
-recommendation rows, no sponsored content, no network access.
+API 30). Clock, pinned apps as banners, then everything else alphabetically,
+over a weather/season/holiday background from Home Assistant. No
+recommendation rows, no sponsored content.
 
 ## Build
 
 Everything builds inside a container; the host needs only Docker and `adb`.
 
 ```bash
-./build.sh            # build the APK
-./build.sh install    # build, install on every SHIELD, return each to HOME
+./build.sh            # run the unit tests, build the APK
+./build.sh install    # same, then install on every SHIELD, return each to HOME
 ```
 
 `install` targets both SHIELDs (Office `192.168.1.209`, Livingroom
@@ -24,7 +25,8 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons` |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`; `TileFlow` (wrapping banner row) |
+| `app/src/test/` | JVM unit tests (`Backgrounds`, `TileFlow` wrapping); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
 | `tools/update-mdi.sh` | refresh the bundled icon font |
@@ -94,8 +96,49 @@ Mapper off) and adds the app to the doze allowlist.
 
 ## Backgrounds
 
-The Flint Hills background images are generated locally with ComfyUI. See
-[scripts/backgrounds/README.md](scripts/backgrounds/README.md).
+The home screen shows one of the Flint Hills images, chosen from Home
+Assistant's state. They're generated locally with ComfyUI (see
+[scripts/backgrounds/README.md](scripts/backgrounds/README.md)) and **ship in
+the APK**. The build copies `output/backgrounds/` (WebPs and `manifest.json`)
+into `assets/backgrounds/`, so generate them before `./build.sh`. Without them
+the build still works, but the screen stays black. New images or focal
+elements reach the TVs with the next `./build.sh install`. The full set makes
+the APK about 150 MB.
+
+| Input | Default entity | Gives |
+| --- | --- | --- |
+| Weather | `weather.lake_of_the_forest` (Tempest) | condition: sunny/clear-night → clear, exceptional → cloudy, hail → pouring, lightning → lightning-rainy, snowy-rainy → snowy, windy-variant → windy, unknown/unavailable → clear |
+| Sun | `sun.sun` | above/below_horizon → day/night |
+| Season | `sensor.season` (Season integration) | spring/summer/autumn/winter |
+
+- **Holidays win over weather.** The date ranges are editable on the config
+  page. Thanksgiving is computed (fourth Thursday of November, plus Friday) and
+  so is Easter; `12-31..01-01` wraps over New Year. If there's no image for the
+  holiday, it falls back to weather.
+- **Focal element:** one per calendar day, rotating in name order through
+  `focal_elements` from the bundled manifest. It's held all day, and a new one
+  joins the rotation with the APK that carries it.
+- **Fallback chain:** exact image → same focal/season/time `clear` → another
+  focal's season/time `clear` → plain black. A missing sun or season entity
+  isn't guessed around; the config page says which one is missing.
+- **Refresh:** every 5 minutes while HOME is showing (the client is REST-only,
+  no websocket), at midnight, and right after a settings change. It crossfades
+  over 1.5 s, only when the chosen path changes.
+- **Startup and decoding:** the last pick shows straight away on start, and it
+  stays up while Home Assistant is unreachable. Decoding happens off the main
+  thread at display size, so 4K WebPs load at 1920×1080 on these SHIELDs.
+- **Readability and layout:**
+  - A left-to-right black gradient sits behind the UI: 75% at the left edge in
+    the day, 65% at night, clear by 65% of the width.
+  - Clock, date and list text get a soft shadow.
+  - Apps and lists stay in the left 65% of the screen, and the banner row
+    wraps there, so the image's focal element on the right stays clear.
+  - All of these numbers are settings.
+- **Debugging:**
+  - The config page's Background section shows what's on screen and why.
+  - Its Preview controls force focal/season/time/weather/holiday, or "None" to
+    preview weather during a holiday. Set them back to Automatic afterwards.
+  - Every pick is logged: `adb logcat -s Backgrounds`.
 
 ## Things that will bite you
 

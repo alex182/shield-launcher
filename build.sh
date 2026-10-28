@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the launcher in the dev container and optionally install it.
+# Build the launcher in the dev container and optionally install it. Unit
+# tests run first; a failing test stops the build.
 #   ./build.sh            build only
 #   ./build.sh install    build, install on every SHIELD, return each to HOME
 # DEVICES (space-separated) or DEVICE overrides the targets.
@@ -16,7 +17,7 @@ docker run --rm \
   -v "$PWD":/workspaces/shield-launcher \
   -v shield-launcher-gradle:/home/dev/.gradle \
   -w /workspaces/shield-launcher \
-  "$IMAGE" gradle :app:assembleRelease --no-daemon --console=plain
+  "$IMAGE" gradle :app:testReleaseUnitTest :app:assembleRelease --no-daemon --console=plain
 
 echo "APK: $APK ($(stat -c%s "$APK") bytes)"
 
