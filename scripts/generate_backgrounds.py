@@ -193,7 +193,15 @@ def build_job(cfg, key):
         f, h, t = rest
         hol = cfg.holidays[h]
         hills = cfg.raw["hill_colors"][hol["season"]] + (", darkened by moonlight" if t == "night" else "")
-        prompt = (f"{cfg.style} {cfg.raw['time_keep'][t].format(noun=noun)} {hol['prompt'].format(noun=noun)} "
+        fe = cfg.focals[f]
+        # A focal element can replace a holiday's prompt (the farmhouse gets a lit
+        # evergreen for Christmas: lights on the house itself redrew the house).
+        template = fe.get("holiday_prompts", {}).get(h, hol["prompt"])
+        # Where decorations hang and sit, e.g. "the windmill's tower" / "the farmhouse's front step".
+        decor = template.format(noun=noun, hang_on=fe.get("hang_on", f"the {noun}"),
+                                foot=fe.get("foot", f"the foot of the {noun}"),
+                                lights_on=fe.get("lights_on", f"the {noun}"))
+        prompt = (f"{cfg.style} {cfg.raw['time_keep'][t].format(noun=noun)} {decor} "
                   f"Keep the hills {hills}. {cfg.keep(noun)}")
         return Job(key, "edit", WORK / "holiday" / f / h / f"{t}.png",
                    ("weather", f, hol["season"], t, "clear"), prompt, cfg.seed("holiday", key_path(key)))
@@ -205,8 +213,10 @@ def build_job(cfg, key):
         hills = cfg.raw["hill_colors"][hol["season"]] + (", darkened by moonlight" if t == "night" else "")
         # Some conditions need a gentler wording so they don't bury the decorations.
         weather = cfg.raw.get("holiday_conditions", {}).get(c, cfg.conditions[c])
+        # Some decorations need their own reminder, e.g. Christmas lights fade out at night otherwise.
+        keep = cfg.raw["holiday_keep"] + (f" {hol['keep']}" if hol.get("keep") else "")
         prompt = (f"{cfg.style} {cfg.raw['time_keep'][t].format(noun=noun)} {weather} "
-                  f"Keep the hills {hills}. {cfg.raw['holiday_keep']} {cfg.keep(noun)}")
+                  f"Keep the hills {hills}. {keep} {cfg.keep(noun)}")
         return Job(key, "edit", WORK / "holiday_weather" / f / h / t / f"{c}.png",
                    ("holiday", f, h, t), prompt, cfg.seed("holiday_weather", key_path(key)))
     raise ValueError(key)
