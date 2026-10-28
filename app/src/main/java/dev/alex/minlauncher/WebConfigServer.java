@@ -38,12 +38,15 @@ final class WebConfigServer implements Runnable {
 
     private final Context context;
     private final Store store;
+    /** Puts the radar up on the TV; the service hops to the main thread. */
+    private final Runnable showRadar;
     private ServerSocket server;
     private Thread thread;
 
-    WebConfigServer(Context context, Store store) {
+    WebConfigServer(Context context, Store store, Runnable showRadar) {
         this.context = context.getApplicationContext();
         this.store = store;
+        this.showRadar = showRadar;
     }
 
     void start() {
@@ -131,6 +134,9 @@ final class WebConfigServer implements Runnable {
                 } catch (IOException e) {
                     send(client, 502, "application/json", error(e.getMessage()));
                 }
+            } else if (method.equals("POST") && path.equals("/api/radar/show")) {
+                showRadar.run();
+                sendResult(client, () -> "Showing on the TV");
             } else if (method.equals("POST") && path.equals("/api/run")) {
                 JSONObject o = new JSONObject(text);
                 Store.Action a = Store.Action.fromJson(o.getJSONObject("action"));
@@ -233,6 +239,9 @@ final class WebConfigServer implements Runnable {
                 .put("sleepMinutes", store.sleepMinutes())
                 .put("sleepShown", store.sleepShown())
                 .put("cameras", new JSONArray(store.cameras()))
+                .put("radarShown", store.radarShown())
+                .put("radarSource", store.radarSource())
+                .put("radarDefault", Store.DEFAULT_RADAR)
                 .put("haUrl", store.haUrl())
                 .put("haTokenSet", !store.haToken().isEmpty())
                 .put("background", background());
@@ -275,6 +284,7 @@ final class WebConfigServer implements Runnable {
         if (o.has("singlePress")) store.setSinglePress(o.getString("singlePress"));
         if (o.has("sleepMinutes")) store.setSleep(o.getInt("sleepMinutes"), o.optBoolean("sleepShown", true));
         if (o.has("cameras")) store.setCameras(strings(o.getJSONArray("cameras")));
+        if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
         if (o.has("haUrl")) store.setHaUrl(o.getString("haUrl").trim());
         if (o.optBoolean("clearToken")) store.setHaToken("");
         else if (!o.optString("haToken").isEmpty()) store.setHaToken(o.getString("haToken").trim());

@@ -23,6 +23,8 @@
     <string name="sleep_set">Sleeping in %d minutes</string>
     <string name="sleep_cancelled">Sleep timer off</string>
     <string name="sleep_soon">Sleeping in 1 minute. Hold the Netflix button to cancel.</string>
+    <string name="radar_hint">Netflix: full screen · Back: close</string>
+    <string name="radar_hint_full">Back: smaller · Netflix: close</string>
     <string name="light_loading">Loading…</string>
     <string name="light_one">Light</string>
     <string name="light_many">%d lights</string>

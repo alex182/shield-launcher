@@ -67,6 +67,14 @@ final class Backgrounds {
         }
     }
 
+    /** Rain, hail or lightning: what brings up the radar pop-up. */
+    static boolean rainOrLightning(String weatherState) {
+        switch (condition(weatherState)) {
+            case "rainy": case "pouring": case "lightning-rainy": return true;
+            default: return false;
+        }
+    }
+
     /**
      * The line under the date, e.g. "Partly cloudy · 54°F", in Home Assistant's
      * own words. Null when there is no usable weather; the temperature is left

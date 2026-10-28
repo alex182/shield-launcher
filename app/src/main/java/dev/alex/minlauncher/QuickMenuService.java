@@ -40,8 +40,11 @@ import java.util.concurrent.Executors;
  *   <li>hold (3 s by default): the quick actions panel, which calls Home
  *       Assistant.</li>
  * </ul>
- * Any press while an overlay is up just closes it. The service also hosts the
- * web config page, since it is the one component that is always running.
+ * Any press while an overlay is up just closes it (the small radar goes full
+ * screen instead). The service also hosts the
+ * web config page and the rain radar pop-up ({@link RadarOverlay}), since it
+ * is the one component that is always running. Back steps the radar down
+ * too (full screen, corner, closed), when nothing else of ours is up.
  *
  * An accessibility service is the only way a non-system app sees keys meant
  * for other apps, and its TYPE_ACCESSIBILITY_OVERLAY windows need no
@@ -69,6 +72,7 @@ public class QuickMenuService extends AccessibilityService {
     private View panel;
     private CameraOverlay cameras;
     private LightPanel lights;
+    private RadarOverlay radar;
     private Store store;
     private WebConfigServer web;
 
@@ -95,6 +99,7 @@ public class QuickMenuService extends AccessibilityService {
     private boolean singlePending;   // released once; waiting to see if a second press follows
     private boolean secondPress;     // this press is the second of a double press
     private boolean swallowRelease;  // this press only closed an overlay
+    private boolean swallowBack;     // this Back only closed the radar
 
     @Override
     protected void onServiceConnected() {
@@ -102,19 +107,32 @@ public class QuickMenuService extends AccessibilityService {
         store = new Store(this);
         cameras = new CameraOverlay(this, wm, store);
         lights = new LightPanel(this, wm, store);
-        web = new WebConfigServer(this, store);
+        radar = new RadarOverlay(this, wm, store);
+        radar.start();
+        web = new WebConfigServer(this, store, () -> handler.post(radar::force));
         web.start();
         registerReceiver(screenOff, new IntentFilter(Intent.ACTION_SCREEN_OFF));
     }
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        if (event.getKeyCode() != NETFLIX_KEY) return false;
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) return onBack(event);
+        if (event.getKeyCode() != NETFLIX_KEY) {
+            // The full-screen radar has no focus (so playback carries on under
+            // it); the app underneath must not act on keys meant for the radar.
+            return radar.isFull() && !passesRadar(event.getKeyCode());
+        }
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (event.getRepeatCount() > 0) return true;
-            if (panel != null || cameras.isShowing()) {
-                hideMenu();
-                cameras.hide();
+            if (panel != null || cameras.isShowing() || radar.isShowing()) {
+                if (panel != null || cameras.isShowing()) {
+                    hideMenu();
+                    cameras.hide();
+                } else if (radar.isFull()) {
+                    radar.dismiss();
+                } else {
+                    radar.setFull(true);
+                }
                 swallowRelease = true;
                 return true;
             }
@@ -142,6 +160,43 @@ public class QuickMenuService extends AccessibilityService {
         return true;   // the system's own Netflix-button handling never sees it
     }
 
+    /**
+     * The small radar window can't take focus (the app underneath keeps the
+     * remote), so its Back is caught here, and full screen's with it. Our
+     * other overlays handle their own Back.
+     */
+    private boolean onBack(KeyEvent event) {
+        if (swallowBack) {
+            // Its repeats and release too, so the app never sees half a press.
+            if (event.getAction() == KeyEvent.ACTION_UP) swallowBack = false;
+            return true;
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN && radar.isShowing()
+                && panel == null && !cameras.isShowing() && !lights.isShowing()) {
+            if (radar.isFull()) radar.setFull(false);
+            else radar.dismiss();
+            swallowBack = true;
+            return true;
+        }
+        return false;
+    }
+
+    /** Volume and playback still reach the app while the radar fills the screen. */
+    private static boolean passesRadar(int key) {
+        switch (key) {
+            case KeyEvent.KEYCODE_VOLUME_UP: case KeyEvent.KEYCODE_VOLUME_DOWN:
+            case KeyEvent.KEYCODE_VOLUME_MUTE: case KeyEvent.KEYCODE_MUTE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE: case KeyEvent.KEYCODE_MEDIA_STOP:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD: case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_NEXT: case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+            case KeyEvent.KEYCODE_POWER: case KeyEvent.KEYCODE_HOME:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void onSinglePress() {
         singlePending = false;
         String pkg = store.singlePress();
@@ -165,6 +220,7 @@ public class QuickMenuService extends AccessibilityService {
         hideMenu();
         if (cameras != null) cameras.shutdown();
         if (lights != null) lights.shutdown();
+        if (radar != null) radar.shutdown();
         if (web != null) web.stop();
         calls.shutdownNow();
         super.onDestroy();

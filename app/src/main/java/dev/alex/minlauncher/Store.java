@@ -48,6 +48,8 @@ final class Store {
     static final String KEY_CAMERAS = "cameras";               // comma-joined entity ids
     static final String KEY_SLEEP_MINUTES = "sleep_minutes";   // sleep timer length
     static final String KEY_SLEEP_SHOWN = "sleep_shown";       // Sleep row at the bottom of quick actions
+    static final String KEY_RADAR_SHOWN = "radar_shown";       // radar pop-up while it rains
+    static final String KEY_RADAR_SOURCE = "radar_source";     // image URL or camera entity
     // Backgrounds: inputs. A change to any of these re-picks the background.
     static final String KEY_BG_WEATHER = "bg_weather";         // entity ids
     static final String KEY_BG_SUN = "bg_sun";
@@ -66,6 +68,8 @@ final class Store {
 
     static final String DEFAULT_WEATHER = "weather.lake_of_the_forest";   // the Tempest station
     static final String DEFAULT_SUN = "sun.sun";
+    /** NWS Kansas City/Pleasant Hill radar, the closest to Lake of the Forest; an animated loop. */
+    static final String DEFAULT_RADAR = "https://radar.weather.gov/ridge/standard/KEAX_loop.gif";
     static final String DEFAULT_SEASON = "sensor.season";
     static final int DEFAULT_SCRIM_DAY = 75;
     static final int DEFAULT_SCRIM_NIGHT = 65;
@@ -166,6 +170,15 @@ final class Store {
 
     String singlePress() { return prefs.getString(KEY_SINGLE_PRESS, DEFAULT_SINGLE_PRESS); }
     void setSinglePress(String pkg) { prefs.edit().putString(KEY_SINGLE_PRESS, pkg).apply(); }
+
+    boolean radarShown() { return prefs.getBoolean(KEY_RADAR_SHOWN, true); }
+    String radarSource() { return prefs.getString(KEY_RADAR_SOURCE, DEFAULT_RADAR); }
+
+    /** A blank source means the default radar. */
+    void setRadar(boolean shown, String source) {
+        prefs.edit().putBoolean(KEY_RADAR_SHOWN, shown)
+                .putString(KEY_RADAR_SOURCE, source.isEmpty() ? DEFAULT_RADAR : source).apply();
+    }
 
     /** Cameras to show, in order; empty means every camera Home Assistant has. */
     List<String> cameras() {
