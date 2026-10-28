@@ -25,7 +25,7 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`; `TileFlow` (wrapping banner row) |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`; `TileFlow` (wrapping banner row) |
 | `app/src/test/` | JVM unit tests (`Backgrounds`, `TileFlow` wrapping); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
@@ -92,6 +92,23 @@ Actions can carry Home Assistant icons (`mdi:lightbulb`). They are drawn from
 a bundled Material Design Icons font in `app/src/main/assets/mdi/` (Apache
 2.0, see its `LICENSE`), so nothing is fetched at runtime;
 `tools/update-mdi.sh [version]` refreshes the font and its name table.
+
+### Rain radar
+
+While the Background's weather entity (`weather.lake_of_the_forest`) is
+rainy, pouring, hail or lightning, `RadarOverlay` puts a small radar loop in
+the bottom-left corner over any app: the NWS Kansas City radar
+(`KEAX_loop.gif`) unless the config page names another image URL or a
+`camera.` entity. The service checks every 2 minutes while the screen is on
+and reloads the image every 5. The small window takes no focus, so the app keeps
+the remote. The Netflix button makes it full screen, still without focus
+so playback carries on underneath; the launcher holds back the arrows and
+select from the app meanwhile (volume and media keys still go through), and
+Back shrinks it again and Netflix closes it. In the corner,
+Back closes it (when no other overlay of ours is up). Once closed it stays
+closed until the weather clears and turns wet again.
+The config page can switch it off, and its **Show radar now** button puts it
+up whatever the weather (it then stays until closed), for trying it out.
 
 ## Web config page
 

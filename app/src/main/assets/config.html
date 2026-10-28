@@ -184,6 +184,19 @@
   </section>
 
   <section>
+    <h2>Rain radar</h2>
+    <p class="hint">While the Background's weather entity says rain, hail or lightning, a small radar pops up in the
+      bottom-left corner over any app. Checked every 2 minutes while the TV is on. The Netflix button makes it full screen; Back steps
+      back down and closes it until the weather clears.</p>
+    <label class="check"><input type="checkbox" id="radar-shown"> Pop up the radar</label>
+    <label for="radar-source">Radar image: a URL (animated GIFs play) or a camera entity</label>
+    <input id="radar-source" spellcheck="false">
+    <div class="inline" style="margin-top:10px"><button id="radar-show">Show radar now</button></div>
+    <p class="hint" style="margin:6px 0 0">Shows the saved source whatever the weather, until it's closed on the TV.</p>
+    <div class="result" id="radar-result"></div>
+  </section>
+
+  <section>
     <h2>Background</h2>
     <p class="hint">One of the images bundled with the launcher, chosen from Home Assistant's weather, sun and season
       and the date. Checked every 5 minutes while the home screen is showing.</p>
@@ -549,6 +562,9 @@ async function load() {
   $('hold').value = state.holdMs / 1000;
   $('sleep-minutes').value = state.sleepMinutes;
   $('sleep-shown').checked = state.sleepShown;
+  $('radar-shown').checked = state.radarShown;
+  $('radar-source').value = state.radarSource;
+  $('radar-source').placeholder = state.radarDefault;
   $('ha-url').value = state.haUrl;
   $('ha-token').value = '';
   $('ha-token').placeholder = state.haTokenSet ? 'Saved. Leave blank to keep it' : 'Not set';
@@ -761,7 +777,7 @@ document.addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.field;
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
-  if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
+  if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'radar-shown', 'radar-source', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
       || /^(bg|ov)-/.test(e.target.id)) markDirty();
 });
 
@@ -796,6 +812,10 @@ async function testAction(i) {
   showResult(el, await post('/api/run', {...haFields(), action: a}));
 }
 
+$('radar-show').onclick = async () => {
+  showResult($('radar-result'), await post('/api/radar/show', {}));
+};
+
 $('ha-test').onclick = async () => {
   const el = $('ha-result');
   el.textContent = 'Connecting…'; el.className = 'result';
@@ -817,6 +837,8 @@ $('save').onclick = async () => {
     sleepMinutes: Math.max(1, Math.min(600, Math.round(parseFloat($('sleep-minutes').value) || 90))),
     sleepShown: $('sleep-shown').checked,
     cameras: draft.cameras,
+    radarShown: $('radar-shown').checked,
+    radarSource: $('radar-source').value.trim(),
     haUrl: $('ha-url').value.trim(),
     background: backgroundFields(),
   };

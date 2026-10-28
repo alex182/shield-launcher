@@ -27,6 +27,16 @@ public class BackgroundsTest {
 
     // ------------------------------------------------------------ conditions
 
+    @Test public void radarOnlyForRainAndLightning() {
+        for (String s : new String[] {"rainy", "pouring", "hail", "lightning", "lightning-rainy"}) {
+            assertTrue(s, Backgrounds.rainOrLightning(s));
+        }
+        for (String s : new String[] {"sunny", "clear-night", "cloudy", "fog", "snowy", "snowy-rainy",
+                "windy", "unavailable", null}) {
+            assertFalse(String.valueOf(s), Backgrounds.rainOrLightning(s));
+        }
+    }
+
     @Test public void mapsEveryWeatherState() {
         String[][] cases = {
                 {"sunny", "clear"}, {"clear-night", "clear"},
