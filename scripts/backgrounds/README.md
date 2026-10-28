@@ -103,7 +103,7 @@ chosen base ─▶ focal (windmill) ─▶ season ×4 ─▶ time: day | night �
 - **day** is a copy of the season image (`"day": null` in `times`); that's already daytime, and copying avoids one generation of drift. **night** is an edit.
 - **Skipped:** `summer/snowy`, day and night (`skip` in the config).
 - **Holidays** and the season they start from: valentines, christmas and new_years → winter; st_patricks and easter → spring; july_4th → summer; halloween and thanksgiving → autumn. Each one is made for day and night, and decorations stay small and in the right third.
-- **Holiday weather** applies the same condition edit to the finished holiday image (plus `holiday_keep`, so the decorations stay put), so a rainy Halloween keeps the same jack-o'-lantern. Clear is the holiday image itself. The launcher shows the holiday in today's weather, falling back to the clear holiday image if that one is missing.
+- **Holiday weather** applies the same condition edit to the finished holiday image (plus `holiday_keep`, so the decorations stay put), so a rainy Halloween keeps the same jack-o'-lantern. A holiday can add its own `keep` line to that; Christmas does, because the tiny lights otherwise faded out in the night weather. Clear is the holiday image itself. The launcher shows the holiday in today's weather, falling back to the clear holiday image if that one is missing.
 - `holiday_conditions` replaces a condition's wording for holiday images only. The thunderstorm one keeps its clouds along the top edge; the normal one fills the sky and buried the hearts and fireworks.
 - Seeds are fixed per stage in `seeds`. Use `seed_overrides` to reroll a single image, e.g. `"weather/windmill/autumn/night/fog": 999`.
 
@@ -122,7 +122,7 @@ every `.webp` that exists.
 
 ## Running it
 
-The full windmill set is 221 edits and 212 4K finals (70 weather + 16 holiday + 126 holiday weather).
+Each focal element's full set is 221 edits and 212 4K finals (70 weather + 16 holiday + 126 holiday weather).
 
 ```bash
 # 1. Base candidates (one per seed in base.candidate_seeds), then stop.
@@ -186,8 +186,20 @@ Add an entry to `focal_elements` in `config.json`:
 ```
 
 `noun` fills the `{noun}` slots in the night, weather and holiday prompts
-("the farmhouse becomes a dark silhouette", "a wreath on the farmhouse").
-Then:
+("the farmhouse becomes a dark silhouette"). The optional `hang_on` and `foot`
+fill the holiday prompts' `{hang_on}` and `{foot}`: where decorations hang
+("a heart on the farmhouse's front door") and where things sit on the ground
+("a jack-o'-lantern right at the farmhouse's front step"). They default to
+"the farmhouse" and "the foot of the farmhouse". `lights_on` fills the
+Christmas prompt's `{lights_on}` (where the string lights go, e.g. "wrapped
+around the branches of its canopy"; default "the farmhouse").
+
+`holiday_prompts` replaces a holiday's prompt for that focal element only. The
+farmhouse uses it twice, because decorations on or at the house made the model
+redraw the house: for Christmas it gets one lit evergreen in the yard instead of
+lights on the roof, and for Halloween the jack-o'-lantern sits in the grass
+beside the house (asking for it "at the front step" grew a porch). Both
+prompts say not to change the farmhouse. Then:
 
 ```bash
 scripts/generate_backgrounds.py --preview --focal farmhouse   # autumn chain, then stop for review
@@ -203,5 +215,6 @@ automatically.
 They ship in the launcher's APK. `./build.sh` copies `output/backgrounds/`
 (the WebPs and `manifest.json`) into `assets/backgrounds/`, and
 `./build.sh install` puts them on every SHIELD. After generating new images or
-a new focal element, rebuild and install. The full windmill set is about 357 MB
-(212 files, ~1.7 MB each), so the APK is about 375 MB.
+a new focal element, rebuild and install. Each focal element's set is about
+357 MB (212 files, ~1.7 MB each). With the windmill, farmhouse and lone tree
+that's 636 files and about 1.1 GB, so the APK is about 1.1 GB too.

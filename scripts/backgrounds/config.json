@@ -23,7 +23,27 @@
   "focal_elements": {
     "windmill": {
       "noun": "windmill",
+      "hang_on": "the windmill's tower",
+      "foot": "the foot of the windmill's tower",
+      "lights_on": "the windmill itself: wrapped tightly around the four legs of its lattice tower, spiraling up to the fan wheel",
       "add": "Add a tiny, distant old-fashioned American farm water-pumping windmill standing alone on the crest of the far ridge, at about 80% across the image, its feet resting on the top of the ridge line just below the horizon, far away from the viewer. It has a narrow four-legged steel lattice tower that tapers toward the top, and on top a round fan wheel of many short metal blades with a flat tail vane behind it. It is a classic Kansas ranch windmill, not a Dutch windmill and not a modern wind turbine. Draw it as simple flat shapes in a muted weathered grey, in the same flat style as the hills, with no outlines. It is very small in the frame: about a tenth of the image height and much narrower than a tenth of the image width. Nothing else is added."
+    },
+    "farmhouse": {
+      "noun": "farmhouse",
+      "hang_on": "the farmhouse's front door",
+      "foot": "the farmhouse's front step",
+      "holiday_prompts": {
+        "christmas": "Add exactly one small evergreen tree on the crest of the ridge, standing in the yard close beside the right side of the farmhouse. It is a single tree, the only tree in the whole image: there is no tree on the left side of the farmhouse. It is small, no taller than the bottom edge of the farmhouse's roof: a simple flat dark green cone shape in the same flat style, decorated with tiny warm glowing Christmas lights, small bright dots of red, green, gold and blue. Do not redraw or change the farmhouse at all: keep its exact shape, size, roof, walls, windows, chimney and colors. No lights anywhere else: not on the house, along the ridge, on the ground or in the sky. Nothing else changes: do not add snow, a wreath, white streaks or anything else on the hills.",
+        "halloween": "Add a single small glowing jack-o'-lantern sitting in the grass on the crest of the ridge, just to the left of the farmhouse. Do not redraw or change the farmhouse at all: keep its exact shape, size, roof, walls, windows, chimney and colors; do not add a porch, steps, a door or lit windows. Nothing else is added; keep it small."
+      },
+      "add": "Add a tiny, distant old Kansas prairie farmhouse standing alone on the crest of the far ridge, at about 80% across the image, its base resting on the top of the ridge line just below the horizon, far away from the viewer. It is a simple two-story white clapboard house with a steep gabled roof in a muted weathered red and a single small brick chimney. Draw it as simple flat shapes in the same flat style as the hills, with no outlines and no fine detail. It is very small in the frame: about a tenth of the image height and no wider than a tenth of the image width. No barn, no fence, no road, no trees. Nothing else is added."
+    },
+    "lone_tree": {
+      "noun": "lone tree",
+      "hang_on": "a low branch of the lone tree",
+      "foot": "the foot of the lone tree's trunk",
+      "lights_on": "the lone tree itself: wrapped loosely around the branches of its canopy",
+      "add": "Add a single tiny, distant lone tree standing alone on the crest of the far ridge, at about 80% across the image, its trunk resting on the top of the ridge line just below the horizon, far away from the viewer. It is an old, wind-shaped prairie bur oak with a short sturdy trunk and a broad, rounded, slightly lopsided canopy. Draw it as simple flat shapes in a muted deep olive green with a darker trunk, in the same flat style as the hills, with no outlines and no individual leaves. It is very small in the frame: about a tenth of the image height and no wider than a tenth of the image width. It is the only tree in the whole image. Nothing else is added."
     }
   },
 
@@ -71,13 +91,13 @@
   ],
 
   "holidays": {
-    "valentines":   {"season": "winter", "prompt": "Hang a small red heart on the {noun}'s tower, and add a few tiny soft pink hearts floating in the sky just above the {noun}. Nothing else is added; keep it all small and only in the right third."},
-    "st_patricks":  {"season": "spring", "prompt": "Hang a small green shamrock garland on the {noun}'s tower, with a few small shamrocks (three-leaf clovers) on the crest of the ridge at the foot of the tower. Nothing else is added; keep it all small and only in the right third."},
-    "easter":       {"season": "spring", "prompt": "Add a small white rabbit sitting on the crest of the ridge beside the foot of the {noun}'s tower, with a few small pastel-colored Easter eggs in the grass next to it. Nothing else is added; keep it all small and only in the right third."},
+    "valentines":   {"season": "winter", "prompt": "Hang a small red heart on {hang_on}, and add a few tiny soft pink hearts floating in the sky just above the {noun}. Nothing else is added; keep it all small and only in the right third."},
+    "st_patricks":  {"season": "spring", "prompt": "Hang a small green shamrock garland on {hang_on}, with a few small shamrocks (three-leaf clovers) on the crest of the ridge at {foot}. Nothing else is added; keep it all small and only in the right third."},
+    "easter":       {"season": "spring", "prompt": "Add a small white rabbit sitting on the crest of the ridge beside {foot}, with a few small pastel-colored Easter eggs in the grass next to it. Nothing else is added; keep it all small and only in the right third."},
     "july_4th":     {"season": "summer", "prompt": "Add a few small red, white and blue fireworks bursting in the sky in the right third, above the {noun}. Keep them small and only in the right third."},
-    "halloween":    {"season": "autumn", "prompt": "Add a single small glowing jack-o'-lantern sitting on the crest of the ridge right at the foot of the {noun}'s tower. Nothing else is added; keep it small."},
-    "thanksgiving": {"season": "autumn", "prompt": "Add one small round hay bale and a few small pumpkins sitting on the crest of the ridge right at the foot of the {noun}'s tower. Nothing is added anywhere else; the left side of the image stays empty."},
-    "christmas":    {"season": "winter", "prompt": "Hang a small green wreath with a red bow on the {noun}'s tower. Nothing else changes: do not add snow, white streaks or anything on the hills."},
+    "halloween":    {"season": "autumn", "prompt": "Add a single small glowing jack-o'-lantern sitting on the crest of the ridge right at {foot}. Nothing else is added; keep it small."},
+    "thanksgiving": {"season": "autumn", "prompt": "Add one small round hay bale and a few small pumpkins sitting on the crest of the ridge right at {foot}. Nothing is added anywhere else; the left side of the image stays empty."},
+    "christmas":    {"season": "winter", "prompt": "Decorate the {noun} with one short strand of small, warm, glowing Christmas lights on {lights_on}. The lights are tiny bright dots of red, green, gold and blue, in the same flat style. The lights touch only the {noun}: no strings of lights across the sky, along the ridge or on the ground. Keep the {noun} exactly the same size and shape. Nothing else changes: do not add snow, a wreath, white streaks or anything on the hills.", "keep": "The Christmas lights stay switched on: every tiny red, green, gold and blue light keeps glowing just as brightly as before, in the same places, clearly visible through the weather."},
     "new_years":    {"season": "winter", "prompt": "Add a few small, soft golden fireworks bursting in the sky in the right third, above the {noun}. Keep them small and only in the right third."}
   },
 
@@ -92,14 +112,30 @@
   "seed_overrides": {
     "holiday/windmill/halloween/day": 55601,
     "holiday/windmill/thanksgiving/day": 55602,
-    "holiday/windmill/christmas/day": 55603,
-    "holiday/windmill/christmas/night": 55604,
+    "holiday/windmill/christmas/day": 55612,
+    "holiday/windmill/christmas/night": 55612,
+    "holiday/farmhouse/christmas/day": 55611,
+    "holiday/farmhouse/christmas/night": 55611,
     "weather/windmill/spring/day/snowy": 44401,
     "weather/windmill/winter/day/snowy": 44402,
     "holiday_weather/windmill/valentines/day/lightning-rainy": 66612,
     "holiday_weather/windmill/valentines/night/lightning-rainy": 66602,
     "holiday_weather/windmill/new_years/day/lightning-rainy": 66603,
     "holiday_weather/windmill/new_years/night/lightning-rainy": 66604,
-    "holiday_weather/windmill/july_4th/night/lightning-rainy": 66605
+    "holiday_weather/windmill/july_4th/night/lightning-rainy": 66605,
+    "weather/farmhouse/autumn/night/windy": 44411,
+    "weather/lone_tree/autumn/night/windy": 44411,
+    "weather/farmhouse/autumn/day/snowy": 44422,
+    "weather/lone_tree/autumn/day/snowy": 44422,
+    "weather/farmhouse/spring/day/snowy": 44401,
+    "weather/lone_tree/spring/day/snowy": 44401,
+    "holiday_weather/windmill/christmas/night/partlycloudy": 66623,
+    "holiday_weather/windmill/christmas/night/windy": 66623,
+    "holiday_weather/windmill/christmas/day/snowy": 66623,
+    "holiday_weather/windmill/christmas/night/snowy": 66623,
+    "holiday_weather/farmhouse/christmas/day/snowy": 66622,
+    "holiday_weather/farmhouse/christmas/night/snowy": 66623,
+    "holiday_weather/lone_tree/christmas/day/snowy": 66623,
+    "holiday_weather/lone_tree/christmas/night/snowy": 66623
   }
 }
