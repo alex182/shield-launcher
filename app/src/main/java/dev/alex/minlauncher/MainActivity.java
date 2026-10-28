@@ -155,6 +155,11 @@ public class MainActivity extends Activity {
     }
 
     private void updateClock() {
+        showTime(clock, date);
+    }
+
+    /** The clock and date lines, shared with the screensaver ({@link BackgroundDream}). */
+    static void showTime(TextView clock, TextView date) {
         Date now = new Date();
         clock.setText(new SimpleDateFormat("HH:mm", Locale.getDefault()).format(now));
         date.setText(new SimpleDateFormat("EEEE, d MMMM", Locale.getDefault())

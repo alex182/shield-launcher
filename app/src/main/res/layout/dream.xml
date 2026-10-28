@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Screensaver (BackgroundDream): the home screen's background with the
+     clock, date and weather in its quiet left side. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <ImageView
+        android:id="@+id/background"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:importantForAccessibility="no" />
+
+    <dev.alex.minlauncher.Scrim
+        android:id="@+id/scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Dims the picture (a SHIELD can't dim the TV itself); the text stays bright. -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/dream_dim" />
+
+    <!-- Moved around a little every minute (BackgroundDream.drift). -->
+    <LinearLayout
+        android:id="@+id/dream_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="64dp"
+        android:paddingTop="48dp">
+
+        <TextView
+            android:id="@+id/clock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="96sp"
+            android:textColor="@color/fg"
+            android:fontFamily="sans-serif-thin"
+            android:letterSpacing="-0.02"
+            android:shadowColor="@color/text_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="6" />
+
+        <TextView
+            android:id="@+id/date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="20sp"
+            android:textColor="@color/subtitle"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="@color/subtitle_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="8" />
+
+        <TextView
+            android:id="@+id/forecast"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            android:textSize="20sp"
+            android:textColor="@color/subtitle"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="@color/subtitle_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="8" />
+
+        <TextView
+            android:id="@+id/weather"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"
+            android:textSize="20sp"
+            android:textColor="@color/subtitle"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="@color/subtitle_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="8" />
+    </LinearLayout>
+</FrameLayout>

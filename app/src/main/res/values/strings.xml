@@ -10,6 +10,7 @@
     <string name="move_right">Move right</string>
     <string name="hide">Hide</string>
     <string name="quick_actions">Quick actions</string>
+    <string name="dream_name">Flint Hills</string>
     <string name="quick_actions_description">Netflix button: press to open your chosen app, double-press for cameras, hold for quick actions.</string>
     <string name="action_placeholder">%s: no Home Assistant service set</string>
     <string name="action_failed">%1$s failed: %2$s</string>
