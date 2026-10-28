@@ -1,0 +1,7 @@
+{
+  "seed": 808,
+  "prompt": "Flat layered landscape illustration of the Kansas Flint Hills: treeless, gently rolling tallgrass hills drawn as flat stacked layers under a big open sky. Soft gradients and subtle film grain. Minimal, cozy and calm. No outlines, no text. Warm, muted earth tones: tallgrass gold, sage, rust, dusty blue sky. Wide 16:9 composition with the horizon at half height. The left 60% of the frame is simple, quiet and low-contrast; all visual interest sits in the right third. Only hills and sky: no buildings, no trees, no people, no animals, no structures. A gentle ridge in the right third of the image, just below the horizon, at about 80% across.",
+  "negative": "text, letters, watermark, signature, logo, outlines, line art, ink, trees, buildings, house, windmill, people, animals, fence, road, photorealistic, photograph, busy detail, high contrast, frame, border",
+  "workflow": "flux2_klein_4b_t2i",
+  "chosen": "2026-10-27"
+}

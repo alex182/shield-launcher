@@ -4,3 +4,9 @@ build/
 local.properties
 # Android cmdline-tools, downloaded locally for the image build (153MB)
 .devcontainer/context/
+
+# ComfyUI runtime (venv, models, outputs) and generated backgrounds
+comfyui/*
+!comfyui/docker-compose.yml
+output/
+__pycache__/

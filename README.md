@@ -92,6 +92,11 @@ quick actions service (`WebConfigServer`), so that service must be enabled.
 `enabled_accessibility_services` (replacing the list would switch Button
 Mapper off) and adds the app to the doze allowlist.
 
+## Backgrounds
+
+The Flint Hills background images are generated locally with ComfyUI. See
+[scripts/backgrounds/README.md](scripts/backgrounds/README.md).
+
 ## Things that will bite you
 
 - **The signing key is pinned** to `keystore/debug.keystore` rather than the

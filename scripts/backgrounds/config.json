@@ -1,0 +1,93 @@
+{
+  "comfyui_url": "http://127.0.0.1:8188",
+
+  "width": 1344,
+  "height": 768,
+  "final_width": 3840,
+  "final_height": 2160,
+  "webp_quality": 90,
+  "final_grain": 0.018,
+
+  "style": "Flat layered landscape illustration of the Kansas Flint Hills: treeless, gently rolling tallgrass hills drawn as flat stacked layers under a big open sky. Soft gradients and subtle film grain. Minimal, cozy and calm. No outlines, no text. Warm, muted earth tones: tallgrass gold, sage, rust, dusty blue sky. Wide 16:9 composition with the horizon at half height. The left 60% of the frame is simple, quiet and low-contrast; all visual interest sits in the right third.",
+
+  "keep": "Keep the exact same composition, horizon line, hill shapes, layers, framing and illustration style. Keep the left 60% of the image simple and low-contrast. Do not add text.",
+
+  "base": {
+    "prompt": "Only hills and sky: no buildings, no trees, no people, no animals, no structures. A gentle ridge in the right third of the image, just below the horizon, at about 80% across.",
+    "negative": "text, letters, watermark, signature, logo, outlines, line art, ink, trees, buildings, house, windmill, people, animals, fence, road, photorealistic, photograph, busy detail, high contrast, frame, border",
+    "candidate_seeds": [101, 202, 303, 404, 505, 606, 707, 808]
+  },
+
+  "focal_elements": {
+    "windmill": {
+      "noun": "windmill",
+      "add": "Add a tiny, distant old-fashioned American farm water-pumping windmill standing alone on the crest of the far ridge, at about 80% across the image, its feet resting on the top of the ridge line just below the horizon, far away from the viewer. It has a narrow four-legged steel lattice tower that tapers toward the top, and on top a round fan wheel of many short metal blades with a flat tail vane behind it. It is a classic Kansas ranch windmill, not a Dutch windmill and not a modern wind turbine. Draw it as simple flat shapes in a muted weathered grey, in the same flat style as the hills, with no outlines. It is very small in the frame: about a tenth of the image height and much narrower than a tenth of the image width. Nothing else is added."
+    }
+  },
+
+  "seasons": {
+    "spring": "Make it spring: the hills turn fresh, soft green with new tallgrass. Recolor one band of the existing far ridge on the right, below the {noun}, as recently burned prairie greening up: a flat, muted charcoal-brown band softly tinted with green. Do not add any new hills or slopes and do not change any hill shapes; no individual grass blades or sprouts, just flat color.",
+    "summer": "Make it high summer: the hills are lush deep green and sage, with warm sunlight and a clear dusty blue sky.",
+    "autumn": "Make it autumn: the tallgrass turns gold, rust and copper, under a soft warm sky.",
+    "winter": "Make it winter: the tallgrass is dormant, pale straw and muted tan with cool grey-blue shadows, under a pale, cold sky. No snow."
+  },
+
+  "hill_colors": {
+    "spring": "fresh soft green, with the flat charcoal-brown burned band on the far ridge",
+    "summer": "lush deep green and sage",
+    "autumn": "gold, rust and copper",
+    "winter": "pale straw and muted tan with cool grey-blue shadows"
+  },
+
+  "times": {
+    "day": null,
+    "night": "Make it night: a dark deep-blue sky with a bright moon and a few soft stars, the hills lit by cool moonlight in darker muted tones. The {noun} becomes a dark silhouette against the sky."
+  },
+  "time_keep": {
+    "day": "Keep the daytime lighting.",
+    "night": "It is night: ignore the daytime sky colors above. Keep the sky a dark deep navy blue with the moon, keep the whole scene dark and moonlit, and do not brighten it toward dusk or day. The {noun} stays a dark silhouette."
+  },
+
+  "conditions": {
+    "clear": "Make the sky completely clear and cloudless, keeping the same sky colors.",
+    "partlycloudy": "Add a few soft, flat clouds drifting in the sky, leaving plenty of open sky.",
+    "cloudy": "Make the sky fully overcast with soft, flat layered grey clouds.",
+    "fog": "Add soft fog: low mist lying in the valleys between the hills, the far layers fading into haze.",
+    "rainy": "Make it a light rain: soft grey clouds and thin, gentle streaks of falling rain.",
+    "pouring": "Make it pouring rain: heavy dark storm clouds and dense sheets of falling rain.",
+    "lightning-rainy": "Make it a thunderstorm: dark storm clouds and falling rain, with one bright lightning bolt in the sky in the right third.",
+    "snowy": "Make it snowing: small, soft snowflakes falling evenly across the whole sky, and an even, thin dusting of snow over all the hills. No bright streaks, smears or patches of white.",
+    "windy": "Make it windy: the tallgrass bends and sways to one side, with streaky, wind-swept clouds racing across the sky."
+  },
+
+  "skip": [
+    {"season": "summer", "condition": "snowy"}
+  ],
+
+  "holidays": {
+    "valentines":   {"season": "winter", "prompt": "Hang a small red heart on the {noun}'s tower, and add a few tiny soft pink hearts floating in the sky just above the {noun}. Nothing else is added; keep it all small and only in the right third."},
+    "st_patricks":  {"season": "spring", "prompt": "Hang a small green shamrock garland on the {noun}'s tower, with a few small shamrocks (three-leaf clovers) on the crest of the ridge at the foot of the tower. Nothing else is added; keep it all small and only in the right third."},
+    "easter":       {"season": "spring", "prompt": "Add a small white rabbit sitting on the crest of the ridge beside the foot of the {noun}'s tower, with a few small pastel-colored Easter eggs in the grass next to it. Nothing else is added; keep it all small and only in the right third."},
+    "july_4th":     {"season": "summer", "prompt": "Add a few small red, white and blue fireworks bursting in the sky in the right third, above the {noun}. Keep them small and only in the right third."},
+    "halloween":    {"season": "autumn", "prompt": "Add a single small glowing jack-o'-lantern sitting on the crest of the ridge right at the foot of the {noun}'s tower. Nothing else is added; keep it small."},
+    "thanksgiving": {"season": "autumn", "prompt": "Add one small round hay bale and a few small pumpkins sitting on the crest of the ridge right at the foot of the {noun}'s tower. Nothing is added anywhere else; the left side of the image stays empty."},
+    "christmas":    {"season": "winter", "prompt": "Hang a small green wreath with a red bow on the {noun}'s tower. Nothing else changes: do not add snow, white streaks or anything on the hills."},
+    "new_years":    {"season": "winter", "prompt": "Add a few small, soft golden fireworks bursting in the sky in the right third, above the {noun}. Keep them small and only in the right third."}
+  },
+
+  "seeds": {
+    "focal": 11111,
+    "season": 22222,
+    "time": 33333,
+    "weather": 44444,
+    "holiday": 55555
+  },
+  "seed_overrides": {
+    "holiday/windmill/halloween/day": 55601,
+    "holiday/windmill/thanksgiving/day": 55602,
+    "holiday/windmill/christmas/day": 55603,
+    "holiday/windmill/christmas/night": 55604,
+    "weather/windmill/spring/day/snowy": 44401,
+    "weather/windmill/winter/day/snowy": 44402
+  }
+}

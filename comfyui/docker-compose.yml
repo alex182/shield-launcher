@@ -1,0 +1,55 @@
+# ComfyUI (NVIDIA) for generating launcher backgrounds.
+# Image: https://github.com/mmartial/ComfyUI-Nvidia-Docker
+# CUDA 12.8 matches the host driver (570.x supports up to CUDA 12.8).
+#
+#   docker compose up -d        # start
+#   docker compose logs -f      # watch first-run install
+#   docker compose down         # stop
+#
+# UI/API: http://<this-host>:8188  (no auth; LAN only)
+
+services:
+  comfyui:
+    image: mmartial/comfyui-nvidia-docker:ubuntu24_cuda12.8-20261018
+    container_name: comfyui-nvidia
+    init: true
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8188:8188"
+    volumes:
+      # ComfyUI code + Python venv (created on first run)
+      - ./run:/comfy/mnt
+      # BASE_DIRECTORY; the user-facing folders below are mounted into it
+      - ./basedir:/basedir
+      - ./models:/basedir/models
+      - ./input:/basedir/input
+      - ./output:/basedir/output
+      - ./custom_nodes:/basedir/custom_nodes
+      - ./user:/basedir/user   # settings + saved UI workflows (user/default/workflows)
+    environment:
+      - USE_UV=true
+      - WANTED_UID=1000
+      - WANTED_GID=1000
+      - BASE_DIRECTORY=/basedir
+      - SECURITY_LEVEL=normal
+      - USE_NEW_MANAGER=true
+      - ENABLE_MANAGER_LEGACY_UI=true
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      # The image ships cuda-compat (libcuda 570.211) ahead of the host driver
+      # in ld.so.conf. GeForce cards don't support CUDA forward compat, so torch
+      # fails with "Error 804". Load the host's libcuda first instead.
+      - LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:/usr/local/cuda/lib64
+      # Don't pull ComfyUI/pip updates on every restart, so the pipeline's
+      # node graph stays stable. The very first start must run with
+      # DISABLE_UPGRADES=false (the image needs it to install torch):
+      #   DISABLE_UPGRADES=false docker compose up -d
+      # To update later, do the same, then restart normally.
+      - DISABLE_UPGRADES=${DISABLE_UPGRADES:-true}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility]
