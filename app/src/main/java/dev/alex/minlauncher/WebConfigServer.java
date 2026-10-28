@@ -38,15 +38,16 @@ final class WebConfigServer implements Runnable {
 
     private final Context context;
     private final Store store;
-    /** Puts the radar up on the TV; the service hops to the main thread. */
-    private final Runnable showRadar;
+    /** Put the radar, or a test alert, up on the TV; the service hops to the main thread. */
+    private final Runnable showRadar, testAlert;
     private ServerSocket server;
     private Thread thread;
 
-    WebConfigServer(Context context, Store store, Runnable showRadar) {
+    WebConfigServer(Context context, Store store, Runnable showRadar, Runnable testAlert) {
         this.context = context.getApplicationContext();
         this.store = store;
         this.showRadar = showRadar;
+        this.testAlert = testAlert;
     }
 
     void start() {
@@ -137,6 +138,9 @@ final class WebConfigServer implements Runnable {
             } else if (method.equals("POST") && path.equals("/api/radar/show")) {
                 showRadar.run();
                 sendResult(client, () -> "Showing on the TV");
+            } else if (method.equals("POST") && path.equals("/api/alerts/test")) {
+                testAlert.run();
+                sendResult(client, () -> "Test alert on the TV");
             } else if (method.equals("POST") && path.equals("/api/run")) {
                 JSONObject o = new JSONObject(text);
                 Store.Action a = Store.Action.fromJson(o.getJSONObject("action"));
@@ -245,6 +249,12 @@ final class WebConfigServer implements Runnable {
                 .put("radarLightningDistance", store.radarLightningDistance())
                 .put("radarLightningStrike", store.radarLightningStrike())
                 .put("radarLightningMiles", store.radarLightningMiles())
+                .put("alertsShown", store.alertsShown())
+                .put("alertsSeverity", store.alertsSeverity())
+                .put("alertsToneSeconds", store.alertsToneSeconds())
+                .put("alertsPoint", store.alertsPoint())
+                .put("alertsSeverities", new JSONArray(Alerts.SEVERITIES))
+                .put("alertsStatus", new JSONObject(store.alertsStatus()))
                 .put("haUrl", store.haUrl())
                 .put("haTokenSet", !store.haToken().isEmpty())
                 .put("background", background());
@@ -288,6 +298,10 @@ final class WebConfigServer implements Runnable {
         if (o.has("sleepMinutes")) store.setSleep(o.getInt("sleepMinutes"), o.optBoolean("sleepShown", true));
         if (o.has("cameras")) store.setCameras(strings(o.getJSONArray("cameras")));
         if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
+        if (o.has("alertsShown")) {
+            store.setAlerts(o.getBoolean("alertsShown"), o.optString("alertsSeverity"),
+                    o.optInt("alertsToneSeconds", Alerts.DEFAULT_TONE_SECONDS), o.optString("alertsPoint").trim());
+        }
         if (o.has("radarLightningMiles")) {
             store.setRadarLightning(o.optString("radarLightningDistance").trim(),
                     o.optString("radarLightningStrike").trim(), o.getInt("radarLightningMiles"));

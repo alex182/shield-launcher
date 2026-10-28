@@ -26,12 +26,7 @@ import android.widget.TextView;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.ByteBuffer;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -61,7 +56,6 @@ final class RadarOverlay {
     private static final long CHECK_MS = 2 * 60_000;
     /** NWS radar loops update about every five minutes. */
     private static final long IMAGE_REFRESH_MS = 5 * 60_000;
-    private static final int TIMEOUT_MS = 15_000;
     /** Of the screen width; the NWS loops are 600×550. */
     private static final float WIDTH_FRACTION = 0.24f;
     private static final float ASPECT = 550f / 600f;
@@ -204,7 +198,7 @@ final class RadarOverlay {
         double dist = parseDouble(d.optString("state"));
         JSONObject attrs = d.optJSONObject("attributes");
         String unit = attrs == null ? null : attrs.optString("unit_of_measurement", null);
-        if (!Backgrounds.lightningNear(dist, unit, parseTime(at), System.currentTimeMillis(), maxMiles)) {
+        if (!Backgrounds.lightningNear(dist, unit, HomeAssistant.parseTime(at), System.currentTimeMillis(), maxMiles)) {
             return null;
         }
         return String.format(Locale.ROOT, "lightning %.1f %s away", dist, unit == null ? "" : unit);
@@ -212,16 +206,6 @@ final class RadarOverlay {
 
     private static double parseDouble(String s) {
         try { return Double.parseDouble(s); } catch (NumberFormatException e) { return Double.NaN; }
-    }
-
-    /** A timestamp sensor's state ("2026-10-28T14:02:04+00:00") in epoch ms; -1 if it isn't one. */
-    private static long parseTime(String s) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return -1;
-        try {
-            return OffsetDateTime.parse(s).toInstant().toEpochMilli();
-        } catch (DateTimeParseException e) {
-            return -1;   // unknown, unavailable
-        }
     }
 
     private void onWeather(String why) {
@@ -323,7 +307,7 @@ final class RadarOverlay {
             Drawable d;
             try {
                 byte[] bytes = source.startsWith("camera.")
-                        ? HomeAssistant.cameraSnapshot(url, token, source) : fetch(source);
+                        ? HomeAssistant.cameraSnapshot(url, token, source) : HomeAssistant.fetchUrl(source);
                 d = decode(bytes);
             } catch (IOException | OutOfMemoryError e) {
                 Log.w(TAG, "cannot load " + source + ": " + e);
@@ -352,23 +336,6 @@ final class RadarOverlay {
         }
         return new BitmapDrawable(context.getResources(),
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.length));
-    }
-
-    private static byte[] fetch(String url) throws IOException {
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        try {
-            c.setConnectTimeout(TIMEOUT_MS);
-            c.setReadTimeout(TIMEOUT_MS);
-            // The NWS asks clients to say who they are.
-            c.setRequestProperty("User-Agent", "dev.alex.minlauncher");
-            int code = c.getResponseCode();
-            if (code >= 400) throw new IOException("HTTP " + code);
-            try (InputStream in = c.getInputStream()) {
-                return HomeAssistant.readBytes(in);
-            }
-        } finally {
-            c.disconnect();
-        }
     }
 
     private int dp(int v) {

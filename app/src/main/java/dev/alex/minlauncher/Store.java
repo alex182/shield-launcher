@@ -53,6 +53,13 @@ final class Store {
     static final String KEY_RADAR_LIGHTNING_DISTANCE = "radar_lightning_distance";   // entity ids, "" = off
     static final String KEY_RADAR_LIGHTNING_STRIKE = "radar_lightning_strike";
     static final String KEY_RADAR_LIGHTNING_MILES = "radar_lightning_miles";
+    static final String KEY_ALERTS_SHOWN = "alerts_shown";     // NWS alert banner
+    static final String KEY_ALERTS_SEVERITY = "alerts_severity";   // minimum CAP severity
+    static final String KEY_ALERTS_TONE_SECONDS = "alerts_tone_seconds";   // 0 = no tone
+    static final String KEY_ALERTS_POINT = "alerts_point";     // "lat,lon", "" = zone.home
+    // Written by AlertBanner, not by the user.
+    static final String KEY_ALERTS_SEEN = "alerts_seen";       // JSON {alert id: end ms}: shown already
+    static final String KEY_ALERTS_STATUS = "alerts_status";   // JSON: last check
     // Backgrounds: inputs. A change to any of these re-picks the background.
     static final String KEY_BG_WEATHER = "bg_weather";         // entity ids
     static final String KEY_BG_SUN = "bg_sun";
@@ -186,6 +193,22 @@ final class Store {
     }
     String radarLightningStrike() { return prefs.getString(KEY_RADAR_LIGHTNING_STRIKE, DEFAULT_LIGHTNING_STRIKE); }
     int radarLightningMiles() { return prefs.getInt(KEY_RADAR_LIGHTNING_MILES, DEFAULT_LIGHTNING_MILES); }
+
+    boolean alertsShown() { return prefs.getBoolean(KEY_ALERTS_SHOWN, true); }
+    String alertsSeverity() { return prefs.getString(KEY_ALERTS_SEVERITY, Alerts.DEFAULT_SEVERITY); }
+    int alertsToneSeconds() { return prefs.getInt(KEY_ALERTS_TONE_SECONDS, Alerts.DEFAULT_TONE_SECONDS); }
+    String alertsPoint() { return prefs.getString(KEY_ALERTS_POINT, ""); }
+    String alertsSeen() { return prefs.getString(KEY_ALERTS_SEEN, "{}"); }
+    String alertsStatus() { return prefs.getString(KEY_ALERTS_STATUS, "{}"); }
+    void setAlertsSeen(String json) { prefs.edit().putString(KEY_ALERTS_SEEN, json).apply(); }
+    void setAlertsStatus(String json) { prefs.edit().putString(KEY_ALERTS_STATUS, json).apply(); }
+
+    void setAlerts(boolean shown, String severity, int toneSeconds, String point) {
+        prefs.edit().putBoolean(KEY_ALERTS_SHOWN, shown)
+                .putString(KEY_ALERTS_SEVERITY, Alerts.SEVERITIES.contains(severity) ? severity : Alerts.DEFAULT_SEVERITY)
+                .putInt(KEY_ALERTS_TONE_SECONDS, Math.max(0, Math.min(Alerts.MAX_TONE_SECONDS, toneSeconds)))
+                .putString(KEY_ALERTS_POINT, point).apply();
+    }
 
     /** Blank entities switch the lightning check off. */
     void setRadarLightning(String distance, String strike, int miles) {

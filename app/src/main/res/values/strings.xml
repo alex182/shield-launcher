@@ -25,6 +25,10 @@
     <string name="sleep_soon">Sleeping in 1 minute. Hold the Netflix button to cancel.</string>
     <string name="radar_hint">Netflix: full screen · Back: close</string>
     <string name="radar_hint_full">Back: smaller · Netflix: close</string>
+    <string name="alert_hint">Back to close</string>
+    <string name="alert_test_event">Test · Weather alert</string>
+    <string name="alert_test_headline">This is a test of the launcher\'s weather alert banner. No action is needed.</string>
+    <string name="alert_test_text">When the National Weather Service issues an alert for home, it shows here with its full text crawling along the bottom, and the attention tone plays once. Press Back or the Netflix button to close it.</string>
     <string name="light_loading">Loading…</string>
     <string name="light_one">Light</string>
     <string name="light_many">%d lights</string>
