@@ -37,6 +37,19 @@ public class BackgroundsTest {
         }
     }
 
+    @Test public void lightningNearByDistanceAndAge() {
+        long now = 1_000_000_000_000L, min = 60_000;
+        assertTrue(Backgrounds.lightningNear(14.9, "mi", now - 5 * min, now, 15));
+        assertTrue(Backgrounds.lightningNear(15, "mi", now - 30 * min, now, 15));
+        assertFalse("too far", Backgrounds.lightningNear(16.2, "mi", now - 5 * min, now, 15));
+        assertFalse("too old", Backgrounds.lightningNear(3, "mi", now - 31 * min, now, 15));
+        assertTrue("km converted", Backgrounds.lightningNear(24, "km", now, now, 15));
+        assertFalse("km converted", Backgrounds.lightningNear(25, "km", now, now, 15));
+        assertFalse("no distance", Backgrounds.lightningNear(Double.NaN, "mi", now, now, 15));
+        assertFalse("no time", Backgrounds.lightningNear(3, "mi", -1, now, 15));
+        assertFalse("well in the future", Backgrounds.lightningNear(3, "mi", now + 5 * min, now, 15));
+    }
+
     @Test public void mapsEveryWeatherState() {
         String[][] cases = {
                 {"sunny", "clear"}, {"clear-night", "clear"},

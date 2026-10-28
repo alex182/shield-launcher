@@ -131,6 +131,7 @@ public class MainActivity extends Activity {
         buildList(null);   // rebuild so installs/uninstalls show up immediately
         store.prefs().registerOnSharedPreferenceChangeListener(prefsChanged);
         background.start();
+        RadarOverlay.setHomeShowing(true);
     }
 
     @Override
@@ -139,6 +140,7 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(timeTick); } catch (IllegalArgumentException ignored) { }
         store.prefs().unregisterOnSharedPreferenceChangeListener(prefsChanged);
         background.stop();
+        RadarOverlay.setHomeShowing(false);
     }
 
     /** Keeps tiles and lists in the left {@link Store#contentWidth()}% of the screen. */

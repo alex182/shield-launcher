@@ -28,7 +28,7 @@ if [ "${1:-}" = "install" ]; then
         adb connect "$d" >/dev/null 2>&1 || true
         if adb -s "$d" install -r "$APK" </dev/null; then
             # Quick actions service: append to, never replace, the enabled
-            # list, or Button Mapper's own service is switched off.
+            # list, or any other app's service (Button Mapper, if installed) is switched off.
             svc=dev.alex.minlauncher/dev.alex.minlauncher.QuickMenuService
             cur=$(adb -s "$d" shell settings get secure enabled_accessibility_services </dev/null | tr -d '\r')
             case "$cur" in

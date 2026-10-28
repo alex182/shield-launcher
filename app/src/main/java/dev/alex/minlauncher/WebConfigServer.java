@@ -242,6 +242,9 @@ final class WebConfigServer implements Runnable {
                 .put("radarShown", store.radarShown())
                 .put("radarSource", store.radarSource())
                 .put("radarDefault", Store.DEFAULT_RADAR)
+                .put("radarLightningDistance", store.radarLightningDistance())
+                .put("radarLightningStrike", store.radarLightningStrike())
+                .put("radarLightningMiles", store.radarLightningMiles())
                 .put("haUrl", store.haUrl())
                 .put("haTokenSet", !store.haToken().isEmpty())
                 .put("background", background());
@@ -285,6 +288,10 @@ final class WebConfigServer implements Runnable {
         if (o.has("sleepMinutes")) store.setSleep(o.getInt("sleepMinutes"), o.optBoolean("sleepShown", true));
         if (o.has("cameras")) store.setCameras(strings(o.getJSONArray("cameras")));
         if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
+        if (o.has("radarLightningMiles")) {
+            store.setRadarLightning(o.optString("radarLightningDistance").trim(),
+                    o.optString("radarLightningStrike").trim(), o.getInt("radarLightningMiles"));
+        }
         if (o.has("haUrl")) store.setHaUrl(o.getString("haUrl").trim());
         if (o.optBoolean("clearToken")) store.setHaToken("");
         else if (!o.optString("haToken").isEmpty()) store.setHaToken(o.getString("haToken").trim());

@@ -54,9 +54,13 @@ The launcher owns the remote's Netflix button (`KEYCODE_BUTTON_12`, scancode
 | Double-press | Home Assistant camera grid (`CameraOverlay`) |
 | Hold (3 s default) | quick actions panel |
 
-Any press while an overlay is up closes it; so does Back. Every key-filtering
-accessibility service sees every key, so **Button Mapper / Buttons remapper
-must not map the Netflix button**, or a double press also fires theirs.
+Any press while an overlay is up closes it; so does Back. The exception is
+the corner rain radar, which a press makes full screen (see below). Every
+key-filtering accessibility service sees every key, so **Button Mapper /
+Buttons remapper must not map the Netflix button**, or a double press also
+fires theirs, and its own mapping relaunching an app stops playback. Neither
+SHIELD runs Button Mapper now (the Office one's was removed on 2026-10-28);
+this matters if it is ever installed again.
 Keys injected with `adb shell input` do not reach accessibility services, so
 the gestures can only be tested with a real remote.
 
@@ -96,8 +100,11 @@ a bundled Material Design Icons font in `app/src/main/assets/mdi/` (Apache
 ### Rain radar
 
 While the Background's weather entity (`weather.lake_of_the_forest`) is
-rainy, pouring, hail or lightning, `RadarOverlay` puts a small radar loop in
-the bottom-left corner over any app: the NWS Kansas City radar
+rainy, pouring, hail or lightning, or the Tempest has logged a strike within
+15 miles in the last 30 minutes (`sensor.lake_of_the_forest_lightning_last_distance`
+and `_last_strike`; both the entities and the radius are settings),
+`RadarOverlay` puts a small radar loop in the bottom-left corner over any app,
+or bottom-right over the home screen, clear of the banners: the NWS Kansas City radar
 (`KEAX_loop.gif`) unless the config page names another image URL or a
 `camera.` entity. The service checks every 2 minutes while the screen is on
 and reloads the image every 5. The small window takes no focus, so the app keeps
@@ -127,8 +134,8 @@ token alone is write-only and never sent back. The server runs inside the
 quick actions service (`WebConfigServer`), so that service must be enabled.
 
 `./build.sh install` does the device setup: it appends the service to
-`enabled_accessibility_services` (replacing the list would switch Button
-Mapper off) and adds the app to the doze allowlist.
+`enabled_accessibility_services` (replacing the list would switch off any
+other app's service, such as Button Mapper) and adds the app to the doze allowlist.
 
 ## Backgrounds
 

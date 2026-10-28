@@ -75,6 +75,23 @@ final class Backgrounds {
         }
     }
 
+    /** How recent a strike must be to bring the radar up on its own. */
+    static final int LIGHTNING_MINUTES = 30;
+
+    /**
+     * A strike within {@code maxMiles} in the last {@link #LIGHTNING_MINUTES}
+     * minutes: storms nearby, before (or after) the station's own condition
+     * says lightning. {@code unit} is the distance sensor's; km is converted.
+     * A NaN distance or a negative time never counts.
+     */
+    static boolean lightningNear(double distance, String unit, long strikeMs, long nowMs, double maxMiles) {
+        if (Double.isNaN(distance) || strikeMs < 0) return false;
+        double miles = unit != null && unit.trim().equalsIgnoreCase("km") ? distance / 1.609344 : distance;
+        long age = nowMs - strikeMs;
+        // A minute's grace for clocks that disagree.
+        return miles <= maxMiles && age >= -60_000 && age <= LIGHTNING_MINUTES * 60_000L;
+    }
+
     /**
      * The line under the date, e.g. "Partly cloudy · 54°F", in Home Assistant's
      * own words. Null when there is no usable weather; the temperature is left
