@@ -50,6 +50,9 @@ final class Store {
     static final String KEY_SLEEP_SHOWN = "sleep_shown";       // Sleep row at the bottom of quick actions
     static final String KEY_RADAR_SHOWN = "radar_shown";       // radar pop-up while it rains
     static final String KEY_RADAR_SOURCE = "radar_source";     // image URL or camera entity
+    static final String KEY_RADAR_LIGHTNING_DISTANCE = "radar_lightning_distance";   // entity ids, "" = off
+    static final String KEY_RADAR_LIGHTNING_STRIKE = "radar_lightning_strike";
+    static final String KEY_RADAR_LIGHTNING_MILES = "radar_lightning_miles";
     // Backgrounds: inputs. A change to any of these re-picks the background.
     static final String KEY_BG_WEATHER = "bg_weather";         // entity ids
     static final String KEY_BG_SUN = "bg_sun";
@@ -70,6 +73,10 @@ final class Store {
     static final String DEFAULT_SUN = "sun.sun";
     /** NWS Kansas City/Pleasant Hill radar, the closest to Lake of the Forest; an animated loop. */
     static final String DEFAULT_RADAR = "https://radar.weather.gov/ridge/standard/KEAX_loop.gif";
+    /** The Tempest's last strike: how far, and when. */
+    static final String DEFAULT_LIGHTNING_DISTANCE = "sensor.lake_of_the_forest_lightning_last_distance";
+    static final String DEFAULT_LIGHTNING_STRIKE = "sensor.lake_of_the_forest_lightning_last_strike";
+    static final int DEFAULT_LIGHTNING_MILES = 15;
     static final String DEFAULT_SEASON = "sensor.season";
     static final int DEFAULT_SCRIM_DAY = 75;
     static final int DEFAULT_SCRIM_NIGHT = 65;
@@ -173,6 +180,19 @@ final class Store {
 
     boolean radarShown() { return prefs.getBoolean(KEY_RADAR_SHOWN, true); }
     String radarSource() { return prefs.getString(KEY_RADAR_SOURCE, DEFAULT_RADAR); }
+
+    String radarLightningDistance() {
+        return prefs.getString(KEY_RADAR_LIGHTNING_DISTANCE, DEFAULT_LIGHTNING_DISTANCE);
+    }
+    String radarLightningStrike() { return prefs.getString(KEY_RADAR_LIGHTNING_STRIKE, DEFAULT_LIGHTNING_STRIKE); }
+    int radarLightningMiles() { return prefs.getInt(KEY_RADAR_LIGHTNING_MILES, DEFAULT_LIGHTNING_MILES); }
+
+    /** Blank entities switch the lightning check off. */
+    void setRadarLightning(String distance, String strike, int miles) {
+        prefs.edit().putString(KEY_RADAR_LIGHTNING_DISTANCE, distance)
+                .putString(KEY_RADAR_LIGHTNING_STRIKE, strike)
+                .putInt(KEY_RADAR_LIGHTNING_MILES, Math.max(1, Math.min(100, miles))).apply();
+    }
 
     /** A blank source means the default radar. */
     void setRadar(boolean shown, String source) {

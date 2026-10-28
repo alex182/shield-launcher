@@ -23,20 +23,28 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.ByteBuffer;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * A small radar picture-in-picture in the bottom-left corner, over whatever
- * app is in front, while Home Assistant's weather says rain or lightning.
+ * app is in front, while Home Assistant's weather says rain or lightning, or
+ * the weather station has seen lightning close by
+ * ({@link Backgrounds#lightningNear}). Over the home screen it sits
+ * bottom-right instead, clear of the app banners.
  *
- * While the screen is on it checks the background's weather entity every
- * {@link #CHECK_MS}; the home screen's own poll only runs while HOME shows.
+ * While the screen is on it checks those entities every {@link #CHECK_MS};
+ * the home screen's own poll only runs while HOME shows.
  * The small window is neither focusable nor touchable, so the app underneath
  * keeps the remote; {@link QuickMenuService} routes Back (close) and the
  * Netflix button (full screen) here. Full screen never takes focus either,
@@ -66,6 +74,10 @@ final class RadarOverlay {
     private final Runnable check = this::check;
     private final Runnable reload = this::reload;
 
+    /** Set by MainActivity, which shares the process; read on the main thread. */
+    private static boolean homeShowing;
+    private static RadarOverlay current;
+
     private FrameLayout root;
     private ImageView image;
     private TextView hint;
@@ -88,8 +100,7 @@ final class RadarOverlay {
     };
     /** A change on the config page shows or hides it straight away. */
     private final SharedPreferences.OnSharedPreferenceChangeListener prefsChanged = (p, key) -> {
-        if (Store.KEY_RADAR_SHOWN.equals(key) || Store.KEY_RADAR_SOURCE.equals(key)
-                || Store.KEY_BG_WEATHER.equals(key)) {
+        if (key != null && (key.startsWith("radar_") || Store.KEY_BG_WEATHER.equals(key))) {
             hide();
             dismissed = false;
             check();
@@ -107,10 +118,12 @@ final class RadarOverlay {
         f.addAction(Intent.ACTION_SCREEN_OFF);
         context.registerReceiver(screen, f);
         store.prefs().registerOnSharedPreferenceChangeListener(prefsChanged);
+        current = this;
         if (((PowerManager) context.getSystemService(Context.POWER_SERVICE)).isInteractive()) check();
     }
 
     void shutdown() {
+        if (current == this) current = null;
         handler.removeCallbacks(check);
         try { context.unregisterReceiver(screen); } catch (IllegalArgumentException ignored) { }
         store.prefs().unregisterOnSharedPreferenceChangeListener(prefsChanged);
@@ -119,6 +132,14 @@ final class RadarOverlay {
     }
 
     boolean isShowing() { return root != null; }
+
+    /** The home screen came up or went away: the corner radar moves out of the banners' way. Main thread. */
+    static void setHomeShowing(boolean on) {
+        if (homeShowing == on) return;
+        homeShowing = on;
+        RadarOverlay r = current;
+        if (r != null && r.root != null && !r.full) r.wm.updateViewLayout(r.root, r.params());
+    }
 
     boolean isFull() { return full; }
 
@@ -149,30 +170,66 @@ final class RadarOverlay {
     private void check() {
         handler.removeCallbacks(check);
         handler.postDelayed(check, CHECK_MS);
-        if (!store.radarShown() || store.bgWeather().isEmpty()) {
+        String weather = store.bgWeather();
+        String distance = store.radarLightningDistance(), strike = store.radarLightningStrike();
+        if (!store.radarShown() || (weather.isEmpty() && (distance.isEmpty() || strike.isEmpty()))) {
             if (!forced) hide();
             return;
         }
-        String url = store.haUrl(), token = store.haToken(), entity = store.bgWeather();
+        String url = store.haUrl(), token = store.haToken();
+        int miles = store.radarLightningMiles();
         worker.execute(() -> {
-            String state;
+            String why;
             try {
-                state = HomeAssistant.entityState(url, token, entity);
+                why = reason(url, token, weather, distance, strike, miles);
             } catch (IOException e) {
                 Log.w(TAG, "cannot reach Home Assistant: " + e.getMessage());
                 return;   // leave it as it is until Home Assistant answers
             }
-            boolean wet = Backgrounds.rainOrLightning(state);
-            handler.post(() -> onWeather(state, wet));
+            handler.post(() -> onWeather(why));
         });
     }
 
-    private void onWeather(String state, boolean wet) {
-        if (!wet) {
+    /** Why the radar should be up ("weather is rainy", "lightning 4.2 mi away"), or null. Worker thread. */
+    private static String reason(String url, String token, String weather, String distance,
+            String strike, int maxMiles) throws IOException {
+        if (!weather.isEmpty()) {
+            String state = HomeAssistant.entityState(url, token, weather);
+            if (Backgrounds.rainOrLightning(state)) return "weather is " + state;
+        }
+        if (distance.isEmpty() || strike.isEmpty()) return null;
+        JSONObject d = HomeAssistant.entity(url, token, distance);
+        String at = HomeAssistant.entityState(url, token, strike);
+        if (d == null || at == null) return null;
+        double dist = parseDouble(d.optString("state"));
+        JSONObject attrs = d.optJSONObject("attributes");
+        String unit = attrs == null ? null : attrs.optString("unit_of_measurement", null);
+        if (!Backgrounds.lightningNear(dist, unit, parseTime(at), System.currentTimeMillis(), maxMiles)) {
+            return null;
+        }
+        return String.format(Locale.ROOT, "lightning %.1f %s away", dist, unit == null ? "" : unit);
+    }
+
+    private static double parseDouble(String s) {
+        try { return Double.parseDouble(s); } catch (NumberFormatException e) { return Double.NaN; }
+    }
+
+    /** A timestamp sensor's state ("2026-10-28T14:02:04+00:00") in epoch ms; -1 if it isn't one. */
+    private static long parseTime(String s) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return -1;
+        try {
+            return OffsetDateTime.parse(s).toInstant().toEpochMilli();
+        } catch (DateTimeParseException e) {
+            return -1;   // unknown, unavailable
+        }
+    }
+
+    private void onWeather(String why) {
+        if (why == null) {
             dismissed = false;
             if (!forced) hide();
         } else if (!dismissed && root == null) {
-            Log.i(TAG, "weather is " + state + ": showing radar");
+            Log.i(TAG, why + ": showing radar");
             show();
         }
     }
@@ -234,7 +291,7 @@ final class RadarOverlay {
                             | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                             | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT);
-            lp.gravity = Gravity.BOTTOM | Gravity.START;
+            lp.gravity = Gravity.BOTTOM | (homeShowing ? Gravity.END : Gravity.START);
             lp.x = dp(32);
             lp.y = dp(32);
         }
