@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
                 switch (key) {
                     case Store.KEY_CONTENT_WIDTH:
                         applyContentWidth();
-                        // fall through: the divider length depends on it
+                        break;
                     case Store.KEY_PINNED:
                     case Store.KEY_HIDDEN:
                         handler.removeCallbacks(rebuild);
@@ -103,7 +103,8 @@ public class MainActivity extends Activity {
 
         store = new Store(this);
         background = new BackgroundController(this, store,
-                findViewById(R.id.background), findViewById(R.id.scrim), findViewById(R.id.weather));
+                findViewById(R.id.background), findViewById(R.id.scrim), findViewById(R.id.weather),
+                findViewById(R.id.forecast));
 
         timeTick = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) {
@@ -151,11 +152,6 @@ public class MainActivity extends Activity {
         return Math.max(dp(64), screen - screen * store.contentWidth() / 100);
     }
 
-    /** Width available to the rows, between the gutters. */
-    private int contentWidthPx() {
-        return getResources().getDisplayMetrics().widthPixels - content.getPaddingLeft() - contentRightPx();
-    }
-
     private void updateClock() {
         Date now = new Date();
         clock.setText(new SimpleDateFormat("HH:mm", Locale.getDefault()).format(now));
@@ -193,7 +189,7 @@ public class MainActivity extends Activity {
             strip.setPadding(dp(8), dp(10), dp(8), dp(4));
             for (App a : pins) strip.addView(makeBanner(a));
             rows.addView(strip);
-            addDivider();
+            addGap();
         }
 
         for (App a : Apps.sorted(rest)) {
@@ -203,7 +199,7 @@ public class MainActivity extends Activity {
             rows.addView(row);
         }
 
-        addDivider();
+        addGap();
         if (!hiddenApps.isEmpty()) {
             rows.addView(makeRow(getString(R.string.hidden_apps, hiddenApps.size()),
                     v -> showHiddenMenu(Apps.sorted(hiddenApps))));
@@ -224,16 +220,11 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void addDivider() {
+    /** Blank space between sections; a rule reads as a stray line over the images. */
+    private void addGap() {
         View v = new View(this);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
-        lp.topMargin = dp(14);
-        lp.bottomMargin = dp(14);
-        // A short rule, at most 412dp, whatever the content width.
-        lp.rightMargin = Math.max(0, contentWidthPx() - dp(412));
-        v.setLayoutParams(lp);
-        v.setBackgroundColor(0xFF1E1E1E);
+        v.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(29)));
         rows.addView(v);
     }
 

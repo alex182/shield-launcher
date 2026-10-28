@@ -46,6 +46,8 @@ final class Store {
     static final String KEY_HA_TOKEN = "ha_token";
     static final String KEY_SINGLE_PRESS = "netflix_single";   // package, "" = nothing
     static final String KEY_CAMERAS = "cameras";               // comma-joined entity ids
+    static final String KEY_SLEEP_MINUTES = "sleep_minutes";   // sleep timer length
+    static final String KEY_SLEEP_SHOWN = "sleep_shown";       // Sleep row at the bottom of quick actions
     // Backgrounds: inputs. A change to any of these re-picks the background.
     static final String KEY_BG_WEATHER = "bg_weather";         // entity ids
     static final String KEY_BG_SUN = "bg_sun";
@@ -71,6 +73,8 @@ final class Store {
     static final int DEFAULT_CONTENT_WIDTH = 65;
 
     static final long DEFAULT_HOLD_MS = 3000;
+    static final int DEFAULT_SLEEP_MINUTES = 90;
+    static final int MAX_SLEEP_MINUTES = 600;
     /** What Button Mapper did with the Netflix button before this took it over. */
     static final String DEFAULT_SINGLE_PRESS = "org.jellyfin.androidtv";
 
@@ -151,6 +155,14 @@ final class Store {
     long holdMs() { return prefs.getLong(KEY_HOLD_MS, DEFAULT_HOLD_MS); }
     String haUrl() { return prefs.getString(KEY_HA_URL, ""); }
     String haToken() { return prefs.getString(KEY_HA_TOKEN, ""); }
+
+    int sleepMinutes() { return prefs.getInt(KEY_SLEEP_MINUTES, DEFAULT_SLEEP_MINUTES); }
+    boolean sleepShown() { return prefs.getBoolean(KEY_SLEEP_SHOWN, true); }
+
+    void setSleep(int minutes, boolean shown) {
+        prefs.edit().putInt(KEY_SLEEP_MINUTES, Math.max(1, Math.min(MAX_SLEEP_MINUTES, minutes)))
+                .putBoolean(KEY_SLEEP_SHOWN, shown).apply();
+    }
 
     String singlePress() { return prefs.getString(KEY_SINGLE_PRESS, DEFAULT_SINGLE_PRESS); }
     void setSinglePress(String pkg) { prefs.edit().putString(KEY_SINGLE_PRESS, pkg).apply(); }

@@ -6,6 +6,7 @@ whole set stays the same scene:
 
   base (t2i) -> focal -> season -> time (day/night) -> weather condition
                                                    \\-> holiday (from <season>/<time>/clear)
+                                                         -> holiday weather (every other condition)
 
 Each stage's output is kept in output/work/ so any stage can be redone without
 redoing earlier ones. Finals are upscaled to 4K and written as WebP to
@@ -41,7 +42,7 @@ WORK = REPO / "output" / "work"
 FINAL = REPO / "output" / "backgrounds"
 REVIEW = REPO / "output" / "review"
 
-STAGES = ["focal", "season", "time", "weather", "holiday", "final"]
+STAGES = ["focal", "season", "time", "weather", "holiday", "holiday_weather", "final"]
 PREVIEW = {"focal": ["windmill"], "season": ["autumn"], "time": ["day", "night"]}
 # Rough seconds per job, used for the ETA until real timings come in.
 DEFAULT_SECONDS = {"t2i": 50, "edit": 15, "copy": 0, "final": 15}
@@ -135,6 +136,7 @@ class Config:
 @dataclass
 class Job:
     key: tuple                 # e.g. ("weather", "windmill", "autumn", "day", "fog")
+                               # or ("holiday_weather", "windmill", "halloween", "day", "rainy")
     kind: str                  # edit | copy | final
     out: Path
     src: tuple | None          # key of the input job (None = chosen base)
@@ -159,6 +161,9 @@ def build_job(cfg, key):
         if src[0] == "weather":
             _, f, s, t, c = src
             out = FINAL / f / s / t / f"{c}.webp"
+        elif src[0] == "holiday_weather":
+            _, f, h, t, c = src
+            out = FINAL / "holidays" / f / h / t / f"{c}.webp"
         else:
             _, f, h, t = src
             out = FINAL / "holidays" / f / h / f"{t}.webp"
@@ -192,6 +197,18 @@ def build_job(cfg, key):
                   f"Keep the hills {hills}. {cfg.keep(noun)}")
         return Job(key, "edit", WORK / "holiday" / f / h / f"{t}.png",
                    ("weather", f, hol["season"], t, "clear"), prompt, cfg.seed("holiday", key_path(key)))
+    if stage == "holiday_weather":
+        # The weather edit applied to the finished holiday image, so its
+        # decorations are the same in every condition.
+        f, h, t, c = rest
+        hol = cfg.holidays[h]
+        hills = cfg.raw["hill_colors"][hol["season"]] + (", darkened by moonlight" if t == "night" else "")
+        # Some conditions need a gentler wording so they don't bury the decorations.
+        weather = cfg.raw.get("holiday_conditions", {}).get(c, cfg.conditions[c])
+        prompt = (f"{cfg.style} {cfg.raw['time_keep'][t].format(noun=noun)} {weather} "
+                  f"Keep the hills {hills}. {cfg.raw['holiday_keep']} {cfg.keep(noun)}")
+        return Job(key, "edit", WORK / "holiday_weather" / f / h / t / f"{c}.png",
+                   ("holiday", f, h, t), prompt, cfg.seed("holiday_weather", key_path(key)))
     raise ValueError(key)
 
 
@@ -204,6 +221,10 @@ def targets(cfg, stages, sel):
                     for c in conds if not cfg.skipped(s, t, c)]
     holiday_keys = [("holiday", f, h, t) for f in focals for h in hols for t in times
                     if cfg.holidays[h]["season"] in seasons]
+    # Clear is the holiday image itself.
+    holiday_weather_keys = [("holiday_weather", f, h, t, c) for _, f, h, t in holiday_keys
+                            for c in conds if c != "clear"
+                            and not cfg.skipped(cfg.holidays[h]["season"], t, c)]
     for stage in stages:
         if stage == "focal":
             keys += [("focal", f) for f in focals]
@@ -215,11 +236,15 @@ def targets(cfg, stages, sel):
             keys += weather_keys
         elif stage == "holiday":
             keys += holiday_keys
+        elif stage == "holiday_weather":
+            keys += holiday_weather_keys
         elif stage == "final":
             if "weather" in sel["final_of"]:
                 keys += [("final", *k) for k in weather_keys]
             if "holiday" in sel["final_of"]:
                 keys += [("final", *k) for k in holiday_keys]
+            if "holiday_weather" in sel["final_of"]:
+                keys += [("final", *k) for k in holiday_weather_keys]
     return keys
 
 
@@ -397,6 +422,17 @@ def preview_sheet(cfg, f):
     return out
 
 
+def holiday_sheet(cfg, f, h):
+    times = list(cfg.times)
+    items = []
+    for t in times:
+        items += [(f"{h} {t} / {c}", FINAL / "holidays" / f / h /
+                   (f"{t}.webp" if c == "clear" else f"{t}/{c}.webp")) for c in cfg.conditions]
+    out = REVIEW / f"holiday_{f}_{h}.jpg"
+    contact_sheet(items, len(cfg.conditions), out)
+    return out
+
+
 def write_manifest(cfg):
     FINAL.mkdir(parents=True, exist_ok=True)
     files = sorted(str(p.relative_to(FINAL)) for p in FINAL.rglob("*.webp"))
@@ -413,6 +449,7 @@ def write_manifest(cfg):
         "paths": {
             "weather": "<focal>/<season>/<time>/<condition>.webp",
             "holiday": "holidays/<focal>/<holiday>/<time>.webp",
+            "holiday_weather": "holidays/<focal>/<holiday>/<time>/<condition>.webp",
         },
         "files": files,
     }
@@ -476,7 +513,7 @@ def main():
         "time": a.time or list(cfg.times),
         "condition": a.condition or list(cfg.conditions),
         "holiday": a.holiday or list(cfg.holidays),
-        "final_of": {"weather", "holiday"},
+        "final_of": {"weather", "holiday", "holiday_weather"},
     }
     if a.stage:
         stages = a.stage
@@ -485,21 +522,24 @@ def main():
     elif a.holiday or a.condition:
         # --holiday / --condition alone target just those images (and their 4K finals);
         # missing upstream images are still generated, but never forced.
-        stages = ["weather", "holiday", "final"]
+        stages = ["weather", "holiday", "holiday_weather", "final"]
     else:
         stages = STAGES
-    if a.holiday and not a.condition:
+    if a.holiday and a.condition:
+        stages = [s for s in stages if s in ("holiday_weather", "final")]
+        sel["final_of"] = {"holiday_weather"}
+    elif a.holiday:
         stages = [s for s in stages if s != "weather"]
-        sel["final_of"] = {"holiday"}
-    elif a.condition and not a.holiday:
-        stages = [s for s in stages if s != "holiday"]
+        sel["final_of"] = {"holiday", "holiday_weather"}
+    elif a.condition:
+        stages = [s for s in stages if s not in ("holiday", "holiday_weather")]
         sel["final_of"] = {"weather"}
 
     if a.preview:
         sel.update(PREVIEW, condition=list(cfg.conditions), final_of={"weather"})
         if a.focal:
             sel["focal"] = a.focal[:1]
-        stages = [s for s in STAGES if s != "holiday"]
+        stages = [s for s in STAGES if s not in ("holiday", "holiday_weather")]
 
     jobs = plan(cfg, targets(cfg, stages, sel), a.force)
     kinds = {k: sum(j.kind == k for j in jobs) for k in ("edit", "copy", "final")}
@@ -516,6 +556,10 @@ def main():
     finally:
         write_manifest(cfg)
 
+    if a.holiday and not a.dry_run:
+        for h in sel["holiday"]:
+            for f in sel["focal"]:
+                print(f"Contact sheet: {holiday_sheet(cfg, f, h)}")
     if a.preview:
         sheet = preview_sheet(cfg, sel["focal"][0])
         print(f"\nPreview done. Contact sheet: {sheet}\n"

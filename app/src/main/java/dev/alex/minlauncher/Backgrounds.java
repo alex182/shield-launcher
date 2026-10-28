@@ -14,7 +14,8 @@ import java.util.Set;
  * relative to the manifest, as scripts/generate_backgrounds.py writes them:
  * <pre>
  *   &lt;focal&gt;/&lt;season&gt;/&lt;day|night&gt;/&lt;condition&gt;.webp
- *   holidays/&lt;focal&gt;/&lt;holiday&gt;/&lt;day|night&gt;.webp
+ *   holidays/&lt;focal&gt;/&lt;holiday&gt;/&lt;day|night&gt;.webp                 (clear)
+ *   holidays/&lt;focal&gt;/&lt;holiday&gt;/&lt;day|night&gt;/&lt;condition&gt;.webp     (any other weather)
  * </pre>
  * Plain Java with no Android classes, so it is unit-tested on the JVM. Dates
  * are done by hand because java.time needs API 26 and minSdk is 21.
@@ -94,6 +95,29 @@ final class Backgrounds {
         }
         if (Double.isNaN(temperature)) return label;
         return label + " · " + Math.round(temperature) + (unit == null ? "" : unit);
+    }
+
+    /** From this hour on, the forecast line shows tomorrow: today's high is past. */
+    static final int FORECAST_TOMORROW_HOUR = 18;
+
+    /**
+     * The line under the weather, e.g. "High 68° · Low 51° · 40% rain", or
+     * "Tomorrow · …" in the evening. NaN parts are left out; null if nothing is left.
+     */
+    static String forecastText(boolean tomorrow, double high, double low, double precipPercent,
+            String condition) {
+        List<String> parts = new ArrayList<>();
+        if (!Double.isNaN(high)) parts.add("High " + Math.round(high) + "°");
+        if (!Double.isNaN(low)) parts.add("Low " + Math.round(low) + "°");
+        if (!Double.isNaN(precipPercent)) {
+            boolean snow = condition != null && condition.startsWith("snowy");
+            parts.add(Math.round(precipPercent) + "% " + (snow ? "snow" : "rain"));
+        }
+        if (parts.isEmpty()) return null;
+        if (tomorrow) parts.add(0, "Tomorrow");
+        StringBuilder b = new StringBuilder();
+        for (String p : parts) b.append(b.length() == 0 ? "" : " · ").append(p);
+        return b.toString();
     }
 
     /** sun.sun's state → "day" / "night", or null if it is neither. */
@@ -320,8 +344,14 @@ final class Backgrounds {
         return "holidays/" + focal + "/" + holiday + "/" + time + ".webp";
     }
 
+    static String holidayPath(String focal, String holiday, String time, String condition) {
+        return CLEAR.equals(condition) ? holidayPath(focal, holiday, time)
+                : "holidays/" + focal + "/" + holiday + "/" + time + "/" + condition + ".webp";
+    }
+
     /**
-     * Holidays first (today's focal, then any other focal), then weather:
+     * Holidays first (today's focal, then any other focal; each in today's
+     * weather if there is that image, else clear), then weather:
      * exact → same focal/season/time clear → another focal's season/time
      * clear → null (the default background). {@code focal} is today's pick.
      */
@@ -347,16 +377,24 @@ final class Backgrounds {
             Holiday h = holidayOn(in.day, holidays);
             if (h != null) holiday = h.name;
         }
+        String condition = o.condition != null ? o.condition : condition(in.weather);
+        String source = o.condition != null ? condition : "weather " + describe(in.weather) + " → " + condition;
+
         if (holiday != null) {
-            String p = holidayPath(focal, holiday, time);
-            if (m.files.contains(p)) {
-                why.add("holiday " + holiday + ", " + time + ", focal " + focal);
-                return new Choice(p, join(why));
-            }
-            for (String f : others) {
+            List<String> focals = new ArrayList<>();
+            focals.add(focal);
+            focals.addAll(others);
+            for (String f : focals) {
+                String where = f.equals(focal) ? ", focal " + f : "; none for " + focal + ", using " + f;
+                String p = holidayPath(f, holiday, time, condition);
+                if (m.files.contains(p)) {
+                    why.add("holiday " + holiday + ", " + source + ", " + time + where);
+                    return new Choice(p, join(why));
+                }
                 p = holidayPath(f, holiday, time);
                 if (m.files.contains(p)) {
-                    why.add("holiday " + holiday + ", " + time + "; none for " + focal + ", using " + f);
+                    why.add("holiday " + holiday + ", " + time + where
+                            + (CLEAR.equals(condition) ? "" : "; no " + condition + " image, using clear"));
                     return new Choice(p, join(why));
                 }
             }
@@ -368,8 +406,6 @@ final class Backgrounds {
             why.add("season is " + describe(season) + ", not spring/summer/autumn/winter");
             return new Choice(null, join(why));
         }
-        String condition = o.condition != null ? o.condition : condition(in.weather);
-        String source = o.condition != null ? condition : "weather " + describe(in.weather) + " → " + condition;
 
         String p = weatherPath(focal, season, time, condition);
         if (m.files.contains(p)) {
