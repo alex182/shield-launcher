@@ -51,8 +51,8 @@ android {
 }
 
 // Background images from scripts/generate_backgrounds.py ship in the APK as
-// assets/backgrounds/ (WebPs + manifest.json). output/ is gitignored, so
-// generate them before building; without them the launcher stays black.
+// assets/backgrounds/ (WebPs + manifest.json). output/backgrounds/ is
+// committed; without it the build still works but the launcher stays black.
 def bgSource = rootProject.file("output/backgrounds")
 def bgAssets = layout.buildDirectory.dir("generated/background-assets").get().asFile
 def syncBackgrounds = tasks.register("syncBackgrounds", Sync) {

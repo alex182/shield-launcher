@@ -49,7 +49,10 @@ Things worth knowing:
 | `output/backgrounds/` | Finals (3840×2160 WebP q90) and `manifest.json`; bundled into the APK by `./build.sh` |
 | `output/review/` | Contact sheets for picking the base and checking the preview |
 
-`comfyui/*` (except the compose file) and `output/` are gitignored.
+`comfyui/*` (except the compose file) is gitignored, and so is `output/`,
+except for `output/backgrounds/`: the finished set is committed because the APK
+bundles it. Commit it again after regenerating; a full regeneration adds about
+145 MB to the repo's history, so prefer rerunning single images.
 
 ### Models
 

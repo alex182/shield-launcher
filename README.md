@@ -99,11 +99,11 @@ Mapper off) and adds the app to the doze allowlist.
 The home screen shows one of the Flint Hills images, chosen from Home
 Assistant's state. They're generated locally with ComfyUI (see
 [scripts/backgrounds/README.md](scripts/backgrounds/README.md)) and **ship in
-the APK**. The build copies `output/backgrounds/` (WebPs and `manifest.json`)
-into `assets/backgrounds/`, so generate them before `./build.sh`. Without them
-the build still works, but the screen stays black. New images or focal
-elements reach the TVs with the next `./build.sh install`. The full set makes
-the APK about 150 MB.
+the APK**. The finished set in `output/backgrounds/` (WebPs and
+`manifest.json`) is committed, so a fresh clone builds with them. The build
+copies it into `assets/backgrounds/`. After regenerating, commit the changed
+images; new images or focal elements reach the TVs with the next
+`./build.sh install`. The full set makes the APK about 150 MB.
 
 | Input | Default entity | Gives |
 | --- | --- | --- |
