@@ -184,6 +184,32 @@
   </section>
 
   <section>
+    <h2>Weather alerts</h2>
+    <p class="hint">When the National Weather Service issues an alert for home, a banner crosses the top of the screen over
+      any app, with the alert's text crawling along the bottom, and the EAS attention tone plays once (updates to an alert
+      already out come without the tone). Checked every minute while the TV is on. Back or the Netflix button closes it.</p>
+    <div class="now" id="alerts-now">Not checked yet.</div>
+    <label class="check"><input type="checkbox" id="alerts-shown"> Show weather alerts</label>
+    <div class="grid3">
+      <div>
+        <label for="alerts-severity">At least this severe</label>
+        <select id="alerts-severity"></select>
+      </div>
+      <div>
+        <label for="alerts-tone">Tone length (seconds, 0 = none)</label>
+        <input type="number" id="alerts-tone" min="0" max="25" step="1" style="width:90px">
+      </div>
+      <div>
+        <label for="alerts-point">Location (lat,lon)</label>
+        <input id="alerts-point" placeholder="From Home Assistant's zone.home" spellcheck="false">
+      </div>
+    </div>
+    <div class="inline" style="margin-top:10px"><button id="alerts-test">Send a test alert</button></div>
+    <p class="hint" style="margin:6px 0 0">Shows a banner marked TEST on the TV and plays the tone, whatever the settings.</p>
+    <div class="result" id="alerts-result"></div>
+  </section>
+
+  <section>
     <h2>Rain radar</h2>
     <p class="hint">While the Background's weather entity says rain, hail or lightning, or the weather station has
       seen lightning close by, a small radar pops up in the bottom-left corner over any app (bottom-right over the
@@ -586,6 +612,16 @@ async function load() {
   $('radar-lightning-distance').value = state.radarLightningDistance;
   $('radar-lightning-strike').value = state.radarLightningStrike;
   $('radar-lightning-miles').value = state.radarLightningMiles;
+  $('alerts-shown').checked = state.alertsShown;
+  $('alerts-severity').innerHTML = state.alertsSeverities.map(s =>
+    `<option value="${esc(s)}">${esc(s)}${s === 'Severe' ? ' (warnings)' : s === 'Minor' ? ' (everything)' : ''}</option>`).join('');
+  $('alerts-severity').value = state.alertsSeverity;
+  $('alerts-tone').value = state.alertsToneSeconds;
+  $('alerts-point').value = state.alertsPoint;
+  const as = state.alertsStatus || {};
+  $('alerts-now').innerHTML = as.at === undefined ? 'Not checked yet: the TV checks while it is on.' :
+    (as.error ? `<span class="bad">${esc(as.error)}</span>` : `${as.active} active alert${as.active === 1 ? '' : 's'} at this severity`) +
+    ` <span style="color:var(--dim)">(checked ${esc(new Date(as.at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}))})</span>`;
   $('ha-url').value = state.haUrl;
   $('ha-token').value = '';
   $('ha-token').placeholder = state.haTokenSet ? 'Saved. Leave blank to keep it' : 'Not set';
@@ -799,7 +835,7 @@ document.addEventListener('input', e => {
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
   if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
-      || /^(bg|ov|radar)-/.test(e.target.id)) markDirty();
+      || /^(bg|ov|radar|alerts)-/.test(e.target.id)) markDirty();
 });
 
 $('add-action').onclick = () => {
@@ -833,6 +869,10 @@ async function testAction(i) {
   showResult(el, await post('/api/run', {...haFields(), action: a}));
 }
 
+$('alerts-test').onclick = async () => {
+  showResult($('alerts-result'), await post('/api/alerts/test', {}));
+};
+
 $('radar-show').onclick = async () => {
   showResult($('radar-result'), await post('/api/radar/show', {}));
 };
@@ -860,6 +900,10 @@ $('save').onclick = async () => {
     cameras: draft.cameras,
     radarShown: $('radar-shown').checked,
     radarSource: $('radar-source').value.trim(),
+    alertsShown: $('alerts-shown').checked,
+    alertsSeverity: $('alerts-severity').value,
+    alertsToneSeconds: Math.max(0, Math.min(25, Math.round((v => isNaN(v) ? 20 : v)(parseFloat($('alerts-tone').value))))),
+    alertsPoint: $('alerts-point').value.trim(),
     radarLightningDistance: $('radar-lightning-distance').value.trim(),
     radarLightningStrike: $('radar-lightning-strike').value.trim(),
     radarLightningMiles: Math.max(1, Math.min(100, Math.round(parseFloat($('radar-lightning-miles').value) || 15))),

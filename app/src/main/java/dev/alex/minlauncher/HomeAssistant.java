@@ -1,5 +1,7 @@
 package dev.alex.minlauncher;
 
+import android.os.Build;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -11,6 +13,8 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 
 /**
  * Minimal Home Assistant REST client. Blocking: call off the main thread.
@@ -131,6 +135,36 @@ final class HomeAssistant {
             return bytes;
         } finally {
             c.disconnect();
+        }
+    }
+
+    /**
+     * A plain GET outside Home Assistant (the NWS radar and alerts), with no
+     * token. The NWS asks clients to say who they are.
+     */
+    static byte[] fetchUrl(String url) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            c.setConnectTimeout(TIMEOUT_MS);
+            c.setReadTimeout(TIMEOUT_MS);
+            c.setRequestProperty("User-Agent", "dev.alex.minlauncher (github.com/alex182/shield-launcher)");
+            int code = c.getResponseCode();
+            if (code >= 400) throw new HttpError(code, "HTTP " + code);
+            try (InputStream in = c.getInputStream()) {
+                return readBytes(in);
+            }
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    /** An ISO 8601 timestamp ("2026-10-28T14:02:04+00:00", as HA and the NWS write them) in epoch ms; -1 if it isn't one. */
+    static long parseTime(String s) {
+        if (s == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return -1;
+        try {
+            return OffsetDateTime.parse(s).toInstant().toEpochMilli();
+        } catch (DateTimeParseException e) {
+            return -1;   // unknown, unavailable
         }
     }
 

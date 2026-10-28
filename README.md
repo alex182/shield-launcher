@@ -117,6 +117,36 @@ closed until the weather clears and turns wet again.
 The config page can switch it off, and its **Show radar now** button puts it
 up whatever the weather (it then stays until closed), for trying it out.
 
+### Weather alerts
+
+When the National Weather Service issues an alert for home, `AlertBanner`
+puts a banner across the top of the screen over any app: the event
+("TORNADO WARNING"), its headline, and the alert's text and instructions
+crawling along the bottom. A new alert plays the EAS attention signal once
+(853 Hz and 960 Hz together, 20 s by default, the tone TV stations play;
+the EAS rules allow 8 to 25 s), and
+updates to an alert already out (extended, re-worded) come without it. The
+tone ducks whatever is playing rather than pausing it, and plays as media
+so it goes wherever the show's sound goes (an alarm would play on the
+built-in output and only sometimes on Bluetooth as well).
+
+- **Source:** `api.weather.gov/alerts/active?point=` at Home Assistant's
+  `zone.home`, or a `lat,lon` set on the config page; checked every minute
+  while the screen is on. Only `Actual` alerts count (no tests or
+  exercises), and cancellations take the banner down.
+- **Which:** "Severe" and up by default (warnings: tornado, severe
+  thunderstorm, flash flood); the config page can lower it to Moderate
+  (watches, many advisories) or Minor (everything).
+- **Closing:** Back or the Netflix button, ahead of the radar. Each alert
+  shows once; the ids shown are kept until the alert ends, so a restart
+  or reinstall doesn't sound them again.
+- **Testing:** "Send a test alert" on the config page shows a banner marked
+  TEST and plays the tone.
+
+The attention signal is for real emergencies when broadcast (47 CFR 11.45);
+this only plays it on the TV in the room, for a real NWS alert or a test
+someone asked for.
+
 ## Web config page
 
 `http://<shield-ip>:8080` (Office `192.168.1.209`, Livingroom `192.168.1.197`)

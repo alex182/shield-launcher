@@ -42,9 +42,10 @@ import java.util.concurrent.Executors;
  * </ul>
  * Any press while an overlay is up just closes it (the small radar goes full
  * screen instead). The service also hosts the
- * web config page and the rain radar pop-up ({@link RadarOverlay}), since it
- * is the one component that is always running. Back steps the radar down
- * too (full screen, corner, closed), when nothing else of ours is up.
+ * web config page, the rain radar pop-up ({@link RadarOverlay})
+ * and the NWS alert banner ({@link AlertBanner}), since it is the one
+ * component that is always running. Back closes the banner and steps the
+ * radar down (full screen, corner, closed), when nothing else of ours is up.
  *
  * An accessibility service is the only way a non-system app sees keys meant
  * for other apps, and its TYPE_ACCESSIBILITY_OVERLAY windows need no
@@ -73,6 +74,7 @@ public class QuickMenuService extends AccessibilityService {
     private CameraOverlay cameras;
     private LightPanel lights;
     private RadarOverlay radar;
+    private AlertBanner alerts;
     private Store store;
     private WebConfigServer web;
 
@@ -109,7 +111,10 @@ public class QuickMenuService extends AccessibilityService {
         lights = new LightPanel(this, wm, store);
         radar = new RadarOverlay(this, wm, store);
         radar.start();
-        web = new WebConfigServer(this, store, () -> handler.post(radar::force));
+        alerts = new AlertBanner(this, wm, store);
+        alerts.start();
+        web = new WebConfigServer(this, store, () -> handler.post(radar::force),
+                () -> handler.post(alerts::test));
         web.start();
         registerReceiver(screenOff, new IntentFilter(Intent.ACTION_SCREEN_OFF));
     }
@@ -124,10 +129,12 @@ public class QuickMenuService extends AccessibilityService {
         }
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (event.getRepeatCount() > 0) return true;
-            if (panel != null || cameras.isShowing() || radar.isShowing()) {
+            if (panel != null || cameras.isShowing() || alerts.isShowing() || radar.isShowing()) {
                 if (panel != null || cameras.isShowing()) {
                     hideMenu();
                     cameras.hide();
+                } else if (alerts.isShowing()) {
+                    alerts.dismiss();
                 } else if (radar.isFull()) {
                     radar.dismiss();
                 } else {
@@ -161,9 +168,9 @@ public class QuickMenuService extends AccessibilityService {
     }
 
     /**
-     * The small radar window can't take focus (the app underneath keeps the
-     * remote), so its Back is caught here, and full screen's with it. Our
-     * other overlays handle their own Back.
+     * The alert banner and the radar can't take focus (the app underneath
+     * keeps the remote), so their Back is caught here: the banner first, then
+     * the radar. Our other overlays handle their own Back.
      */
     private boolean onBack(KeyEvent event) {
         if (swallowBack) {
@@ -171,8 +178,16 @@ public class QuickMenuService extends AccessibilityService {
             if (event.getAction() == KeyEvent.ACTION_UP) swallowBack = false;
             return true;
         }
-        if (event.getAction() == KeyEvent.ACTION_DOWN && radar.isShowing()
-                && panel == null && !cameras.isShowing() && !lights.isShowing()) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN || panel != null || cameras.isShowing()
+                || lights.isShowing()) {
+            return false;
+        }
+        if (alerts.isShowing()) {
+            alerts.dismiss();
+            swallowBack = true;
+            return true;
+        }
+        if (radar.isShowing()) {
             if (radar.isFull()) radar.setFull(false);
             else radar.dismiss();
             swallowBack = true;
@@ -221,6 +236,7 @@ public class QuickMenuService extends AccessibilityService {
         if (cameras != null) cameras.shutdown();
         if (lights != null) lights.shutdown();
         if (radar != null) radar.shutdown();
+        if (alerts != null) alerts.shutdown();
         if (web != null) web.stop();
         calls.shutdownNow();
         super.onDestroy();
