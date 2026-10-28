@@ -103,7 +103,7 @@ public class MainActivity extends Activity {
 
         store = new Store(this);
         background = new BackgroundController(this, store,
-                findViewById(R.id.background), findViewById(R.id.scrim));
+                findViewById(R.id.background), findViewById(R.id.scrim), findViewById(R.id.weather));
 
         timeTick = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) {

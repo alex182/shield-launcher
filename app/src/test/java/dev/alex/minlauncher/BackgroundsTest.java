@@ -51,6 +51,19 @@ public class BackgroundsTest {
         }
     }
 
+    @Test public void weatherLine() {
+        assertEquals("Partly cloudy · 54°F", Backgrounds.weatherText("partlycloudy", 54.4, "°F"));
+        assertEquals("Lightning, rainy · -3°C", Backgrounds.weatherText("lightning-rainy", -2.6, "°C"));
+        assertEquals("Sunny", Backgrounds.weatherText("sunny", Double.NaN, "°F"));
+        assertNull(Backgrounds.weatherText("unavailable", 54, "°F"));
+        assertNull(Backgrounds.weatherText(null, 54, "°F"));
+        for (String s : new String[] {"clear-night", "cloudy", "exceptional", "fog", "hail", "lightning",
+                "lightning-rainy", "partlycloudy", "pouring", "rainy", "snowy", "snowy-rainy", "sunny",
+                "windy", "windy-variant"}) {
+            assertTrue(s, Backgrounds.weatherText(s, Double.NaN, null) != null);
+        }
+    }
+
     @Test public void sunStateToTimeOfDay() {
         assertEquals("day", Backgrounds.timeOfDay("above_horizon"));
         assertEquals("night", Backgrounds.timeOfDay("below_horizon"));

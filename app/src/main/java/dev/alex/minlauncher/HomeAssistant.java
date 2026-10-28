@@ -43,17 +43,22 @@ final class HomeAssistant {
         return request(url, token, "GET", "/api/services", null);
     }
 
-    /** GET /api/states/{entity} — its state string, or null if there is no such entity. */
-    static String entityState(String url, String token, String entityId) throws IOException {
+    /** GET /api/states/{entity} — {state, attributes, …}, or null if there is no such entity. */
+    static JSONObject entity(String url, String token, String entityId) throws IOException {
         try {
-            return new JSONObject(request(url, token, "GET", "/api/states/" + entityId, null))
-                    .optString("state", null);
+            return new JSONObject(request(url, token, "GET", "/api/states/" + entityId, null));
         } catch (HttpError e) {
             if (e.code == 404) return null;
             throw e;
         } catch (JSONException e) {
             throw new IOException("Bad state for " + entityId + ": " + e.getMessage());
         }
+    }
+
+    /** An entity's state string, or null if there is no such entity. */
+    static String entityState(String url, String token, String entityId) throws IOException {
+        JSONObject o = entity(url, token, entityId);
+        return o == null ? null : o.optString("state", null);
     }
 
     /** GET /api/camera_proxy/{entity} — the camera's current frame, usually JPEG. */

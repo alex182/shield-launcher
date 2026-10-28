@@ -66,6 +66,36 @@ final class Backgrounds {
         }
     }
 
+    /**
+     * The line under the date, e.g. "Partly cloudy · 54°F", in Home Assistant's
+     * own words. Null when there is no usable weather; the temperature is left
+     * out if NaN.
+     */
+    static String weatherText(String state, double temperature, String unit) {
+        if (state == null) return null;
+        String label;
+        switch (state) {
+            case "clear-night": label = "Clear, night"; break;
+            case "cloudy": label = "Cloudy"; break;
+            case "exceptional": label = "Exceptional"; break;
+            case "fog": label = "Fog"; break;
+            case "hail": label = "Hail"; break;
+            case "lightning": label = "Lightning"; break;
+            case "lightning-rainy": label = "Lightning, rainy"; break;
+            case "partlycloudy": label = "Partly cloudy"; break;
+            case "pouring": label = "Pouring"; break;
+            case "rainy": label = "Rainy"; break;
+            case "snowy": label = "Snowy"; break;
+            case "snowy-rainy": label = "Snowy, rainy"; break;
+            case "sunny": label = "Sunny"; break;
+            case "windy": label = "Windy"; break;
+            case "windy-variant": label = "Windy, cloudy"; break;
+            default: return null;   // unknown, unavailable
+        }
+        if (Double.isNaN(temperature)) return label;
+        return label + " · " + Math.round(temperature) + (unit == null ? "" : unit);
+    }
+
     /** sun.sun's state → "day" / "night", or null if it is neither. */
     static String timeOfDay(String sunState) {
         if ("above_horizon".equals(sunState)) return "day";

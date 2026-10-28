@@ -15,7 +15,9 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.WindowManager;
+import android.view.View;
 import android.widget.ImageView;
+import android.widget.TextView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -31,7 +33,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Keeps the home screen background in step with Home Assistant. While HOME
+ * Keeps the home screen background, and the weather line under the date, in
+ * step with Home Assistant. While HOME
  * is showing it polls the weather, sun and season entities every five
  * minutes (the client is REST-only), picks an image with {@link Backgrounds}
  * and crossfades to it, but only when the picked path changes.
@@ -53,6 +56,7 @@ final class BackgroundController {
     private final Store store;
     private final ImageView image;
     private final Scrim scrim;
+    private final TextView weatherLine;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Runnable poll = this::refresh;
@@ -65,11 +69,12 @@ final class BackgroundController {
     private boolean running;
     private Backgrounds.Day today = Backgrounds.Day.today();
 
-    BackgroundController(Context context, Store store, ImageView image, Scrim scrim) {
+    BackgroundController(Context context, Store store, ImageView image, Scrim scrim, TextView weatherLine) {
         this.context = context.getApplicationContext();
         this.store = store;
         this.image = image;
         this.scrim = scrim;
+        this.weatherLine = weatherLine;
     }
 
     /** HOME is showing: pick now, then every {@link #POLL_MS}. */
@@ -123,8 +128,17 @@ final class BackgroundController {
         Backgrounds.Day day = Backgrounds.Day.today();
         Backgrounds.Inputs in;
         try {
-            in = new Backgrounds.Inputs(day, state(url, token, store.bgWeather()),
+            JSONObject weather = store.bgWeather().isEmpty() ? null
+                    : HomeAssistant.entity(url, token, store.bgWeather());
+            String condition = weather == null ? null : weather.optString("state", null);
+            in = new Backgrounds.Inputs(day, condition,
                     state(url, token, store.bgSun()), state(url, token, store.bgSeason()));
+            // The live weather, whatever image a holiday or the preview put up.
+            JSONObject attrs = weather == null ? null : weather.optJSONObject("attributes");
+            String line = Backgrounds.weatherText(condition,
+                    attrs == null ? Double.NaN : attrs.optDouble("temperature", Double.NaN),
+                    attrs == null ? null : attrs.optString("temperature_unit", null));
+            handler.post(() -> showWeather(line));
         } catch (IOException e) {
             // Keep whatever is showing; showLast() already put up the last pick.
             Log.w(TAG, "cannot reach Home Assistant: " + e.getMessage());
@@ -253,6 +267,11 @@ final class BackgroundController {
     }
 
     // ---------------------------------------------------------------- main
+
+    private void showWeather(String line) {
+        weatherLine.setText(line);
+        weatherLine.setVisibility(line == null ? View.GONE : View.VISIBLE);
+    }
 
     private void crossfade(String key, Bitmap bmp) {
         if (key.equals(shown)) return;
