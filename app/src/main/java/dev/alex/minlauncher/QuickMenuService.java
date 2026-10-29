@@ -19,6 +19,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -278,11 +279,19 @@ public class QuickMenuService extends AccessibilityService {
         sub.setPadding(0, dp(2), 0, dp(24));
         box.addView(sub);
 
-        for (Store.Action action : store.actions()) box.addView(makeRow(action));
+        // The actions scroll in the leftover height, so the title stays put and
+        // Sleep sits at the very bottom of the pane however many there are.
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        for (Store.Action action : store.actions()) list.addView(makeRow(action));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setVerticalFadingEdgeEnabled(true);
+        scroll.setFadingEdgeLength(dp(32));
+        scroll.addView(list);
+        box.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         if (store.sleepShown()) {
-            // Takes the leftover height, so Sleep sits at the very bottom of the pane.
-            box.addView(new View(this), new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
             sleepRow = makeRow(Icons.withLabel(this, "mdi:power-sleep", ""), v -> toggleSleep());
             box.addView(sleepRow);
             updateSleepRow();
@@ -302,9 +311,8 @@ public class QuickMenuService extends AccessibilityService {
         wm.addView(panel, lp);
         // As in MainActivity, focus only sticks once the views are laid out.
         box.post(() -> {
-            for (int i = 2; i < box.getChildCount(); i++) {
-                if (box.getChildAt(i).isFocusable()) { box.getChildAt(i).requestFocus(); break; }
-            }
+            View first = list.getChildCount() > 0 ? list.getChildAt(0) : sleepRow;
+            if (first != null) first.requestFocus();
         });
     }
 
