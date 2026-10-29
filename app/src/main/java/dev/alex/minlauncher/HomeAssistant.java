@@ -13,8 +13,12 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 
 /**
  * Minimal Home Assistant REST client. Blocking: call off the main thread.
@@ -86,6 +90,37 @@ final class HomeAssistant {
         } catch (JSONException e) {
             throw new IOException("Bad forecast for " + entityId + ": " + e.getMessage());
         }
+    }
+
+    /** GET /api/calendars — [{entity_id, name}] for every calendar entity. */
+    static JSONArray calendars(String url, String token) throws IOException {
+        try {
+            return new JSONArray(request(url, token, "GET", "/api/calendars", null));
+        } catch (JSONException e) {
+            throw new IOException("Bad calendar list: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/calendars/{entity}?start=…&amp;end=… — the events that overlap
+     * the range, each with {summary, start, end}; start and end hold either
+     * "dateTime" (ISO 8601) or, for all-day events, "date".
+     */
+    static JSONArray calendarEvents(String url, String token, String entityId, long startMs, long endMs)
+            throws IOException {
+        try {
+            return new JSONArray(request(url, token, "GET", "/api/calendars/" + entityId
+                    + "?start=" + utc(startMs) + "&end=" + utc(endMs), null));
+        } catch (JSONException e) {
+            throw new IOException("Bad events for " + entityId + ": " + e.getMessage());
+        }
+    }
+
+    /** "2026-10-29T05:00:00Z": UTC, so there is no offset's "+" to escape in a query string. */
+    private static String utc(long ms) {
+        SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ROOT);
+        f.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return f.format(new Date(ms));
     }
 
     /** POST /api/services/{domain}/{service} with the action's JSON data. */

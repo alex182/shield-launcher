@@ -60,6 +60,15 @@ final class Store {
     // Written by AlertBanner, not by the user.
     static final String KEY_ALERTS_SEEN = "alerts_seen";       // JSON {alert id: end ms}: shown already
     static final String KEY_ALERTS_STATUS = "alerts_status";   // JSON: last check
+    static final String KEY_CALENDAR_SHOWN = "calendar_shown"; // today's events on HOME
+    static final String KEY_CALENDARS = "calendars";           // comma-joined entity ids, "" = every calendar
+    static final String KEY_CALENDAR_STATUS = "calendar_status";   // JSON: last fetch, written by AgendaController
+    static final String KEY_REMINDER_TIMES = "reminder_times"; // minutes before an event, "60, 30, 10"; "" = off
+    static final String KEY_REMINDER_CHIME = "reminder_chime";
+    static final String KEY_REMINDERS_SEEN = "reminders_seen"; // JSON {event key: start ms}: shown already
+    static final String KEY_DIGEST_SHOWN = "digest_shown";     // evening summary of tomorrow's events
+    static final String KEY_DIGEST_TIME = "digest_time";       // "HH:mm"
+    static final String KEY_DIGEST_DAY = "digest_day";         // local midnight of the day it last came up
     // Backgrounds: inputs. A change to any of these re-picks the background.
     static final String KEY_BG_WEATHER = "bg_weather";         // entity ids
     static final String KEY_BG_SUN = "bg_sun";
@@ -233,6 +242,54 @@ final class Store {
     void setCameras(List<String> ids) {
         prefs.edit().putString(KEY_CAMERAS, TextUtils.join(",", ids)).apply();
     }
+
+    boolean calendarShown() { return prefs.getBoolean(KEY_CALENDAR_SHOWN, true); }
+
+    /** Calendars whose events show on HOME; empty means every calendar Home Assistant has. */
+    List<String> calendars() {
+        List<String> out = new ArrayList<>();
+        for (String p : prefs.getString(KEY_CALENDARS, "").split(",")) if (!p.isEmpty()) out.add(p);
+        return out;
+    }
+
+    void setCalendars(boolean shown, List<String> ids) {
+        prefs.edit().putBoolean(KEY_CALENDAR_SHOWN, shown)
+                .putString(KEY_CALENDARS, TextUtils.join(",", ids)).apply();
+    }
+
+    static final String DEFAULT_REMINDER_TIMES = "10";
+
+    /** Reminder leads in minutes, smallest first; empty = no reminders. */
+    List<Integer> reminderTimes() {
+        return Agenda.parseLeads(prefs.getString(KEY_REMINDER_TIMES, DEFAULT_REMINDER_TIMES));
+    }
+    boolean reminderChime() { return prefs.getBoolean(KEY_REMINDER_CHIME, true); }
+    String remindersSeen() { return prefs.getString(KEY_REMINDERS_SEEN, "{}"); }
+    void setRemindersSeen(String json) { prefs.edit().putString(KEY_REMINDERS_SEEN, json).apply(); }
+
+    /** Stored tidied up ("60, 30, 10"), whatever was typed. */
+    void setReminders(String times, boolean chime) {
+        prefs.edit().putString(KEY_REMINDER_TIMES, Agenda.formatLeads(Agenda.parseLeads(times)))
+                .putBoolean(KEY_REMINDER_CHIME, chime).apply();
+    }
+
+    static final String DEFAULT_DIGEST_TIME = "20:30";
+
+    boolean digestShown() { return prefs.getBoolean(KEY_DIGEST_SHOWN, true); }
+    String digestTime() { return prefs.getString(KEY_DIGEST_TIME, DEFAULT_DIGEST_TIME); }
+    long digestDay() { return prefs.getLong(KEY_DIGEST_DAY, 0); }
+    void setDigestDay(long dayStart) { prefs.edit().putLong(KEY_DIGEST_DAY, dayStart).apply(); }
+
+    /** A time that isn't "HH:mm" keeps the one saved. */
+    void setDigest(boolean shown, String time) {
+        SharedPreferences.Editor e = prefs.edit().putBoolean(KEY_DIGEST_SHOWN, shown);
+        int m = Agenda.parseClock(time);
+        if (m >= 0) e.putString(KEY_DIGEST_TIME, String.format(java.util.Locale.ROOT, "%02d:%02d", m / 60, m % 60));
+        e.apply();
+    }
+
+    String calendarStatus() { return prefs.getString(KEY_CALENDAR_STATUS, "{}"); }
+    void setCalendarStatus(String json) { prefs.edit().putString(KEY_CALENDAR_STATUS, json).apply(); }
 
     String bgWeather() { return prefs.getString(KEY_BG_WEATHER, DEFAULT_WEATHER); }
     String bgSun() { return prefs.getString(KEY_BG_SUN, DEFAULT_SUN); }

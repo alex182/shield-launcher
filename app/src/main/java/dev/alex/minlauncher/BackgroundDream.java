@@ -11,8 +11,8 @@ import android.widget.TextView;
 import java.util.Random;
 
 /**
- * Screensaver: the home screen's background full screen, with the clock, date
- * and weather in the image's quiet left side. The image is picked and
+ * Screensaver: the home screen's background full screen, with the clock, date,
+ * weather and today's events in the image's quiet left side. The image is picked and
  * refreshed by its own {@link BackgroundController}, exactly as HOME does, so
  * it shows the same focal element, season, time, weather and holiday, and
  * crossfades when the weather or the sun changes.
@@ -34,12 +34,14 @@ public class BackgroundDream extends DreamService {
 
     private final Random random = new Random();
     private BackgroundController background;
+    private AgendaController agenda;
     private TextView clock, date;
     private View text;
     private final BroadcastReceiver timeTick = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             MainActivity.showTime(clock, date);
             background.onTimeTick();
+            agenda.onTimeTick();
             drift();
         }
     };
@@ -53,9 +55,11 @@ public class BackgroundDream extends DreamService {
         text = findViewById(R.id.dream_text);
         clock = findViewById(R.id.clock);
         date = findViewById(R.id.date);
-        background = new BackgroundController(this, new Store(this),
+        Store store = new Store(this);
+        background = new BackgroundController(this, store,
                 findViewById(R.id.background), findViewById(R.id.scrim), findViewById(R.id.weather),
                 findViewById(R.id.forecast));
+        agenda = new AgendaController(store, findViewById(R.id.agenda));
     }
 
     @Override
@@ -65,6 +69,7 @@ public class BackgroundDream extends DreamService {
         // ACTION_TIME_TICK only arrives while registered at runtime.
         registerReceiver(timeTick, new IntentFilter(Intent.ACTION_TIME_TICK));
         background.start();
+        agenda.start();
     }
 
     @Override
@@ -72,11 +77,13 @@ public class BackgroundDream extends DreamService {
         super.onDreamingStopped();
         try { unregisterReceiver(timeTick); } catch (IllegalArgumentException ignored) { }
         background.stop();
+        agenda.stop();
     }
 
     @Override
     public void onDetachedFromWindow() {
         background.shutdown();
+        agenda.shutdown();
         super.onDetachedFromWindow();
     }
 

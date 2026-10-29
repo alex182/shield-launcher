@@ -70,6 +70,10 @@
   h3.sub { font-size: 13px; font-weight: 600; margin: 18px 0 0; color: var(--fg); }
   .check { display: flex; gap: 6px; align-items: center; color: var(--dim); font-size: 13px; margin-top: 8px; }
   .check input { width: auto; }
+  .times { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .times button { display: flex; align-items: center; gap: 8px; border-radius: 999px; padding: 5px 8px 5px 12px; }
+  .times button span { color: var(--dim); font-size: 15px; line-height: 1; }
+  .times button:hover span { color: var(--bad); }
   .mdi { font-family: "mdi"; font-style: normal; line-height: 1; }
   .card .top .preview {
     width: 36px; height: 36px; flex: none; display: grid; place-items: center;
@@ -181,6 +185,48 @@
       <button id="cameras-load">Load cameras from Home Assistant</button>
     </div>
     <div class="result" id="cameras-result"></div>
+  </section>
+
+  <section>
+    <h2>Calendar</h2>
+    <p class="hint">Today's events from Home Assistant's calendars, as one line under the date on the home screen
+      and the screensaver: all-day events first, the first two named and the rest counted. Events that have finished
+      drop off. Read every 5 minutes while the home screen is showing.
+      Tick the calendars to show; with none ticked, every calendar in Home Assistant is shown except the Workday
+      integration's (it marks every working day).</p>
+    <div class="now" id="calendar-now">Not read yet.</div>
+    <label class="check"><input type="checkbox" id="calendar-shown"> Show today's events</label>
+    <div id="calendars"></div>
+    <div class="inline" style="margin-top:10px">
+      <button id="calendars-load">Load calendars from Home Assistant</button>
+    </div>
+    <div class="result" id="calendars-result"></div>
+    <h3 class="sub">Reminders</h3>
+    <p class="hint" style="margin:4px 0 0">A card pops up in the top-right corner over any app at each of these times before
+      an event in the calendars above starts, with a soft chime that ducks what's playing. All-day events don't get one. It goes
+      by itself after a minute; Back or the Netflix button closes it sooner. Only while the TV is on. Turned on late,
+      the TV shows only the latest reminder due, not every one it missed.</p>
+    <label>Remind me before each event</label>
+    <div class="times" id="reminder-times"></div>
+    <div class="inline">
+      <input type="number" id="reminder-add-minutes" min="1" max="1440" step="1" placeholder="Minutes">
+      <button id="reminder-add">Add reminder</button>
+    </div>
+    <label class="check"><input type="checkbox" id="calendar-reminder-chime"> Chime</label>
+    <div class="inline" style="margin-top:10px"><button id="reminders-test">Send a test reminder</button></div>
+    <p class="hint" style="margin:6px 0 0">Shows a made-up event on the TV, the shortest time away, with the chime if it's ticked, using the saved settings.</p>
+    <div class="result" id="reminders-result"></div>
+    <h3 class="sub">Evening summary</h3>
+    <p class="hint" style="margin:4px 0 0">At this time each evening, a card in the same corner lists tomorrow's events,
+      with the chime if it's ticked above. If the TV is off then, it comes when the TV is turned on, until midnight.
+      No card when there's nothing tomorrow. It goes by itself after two minutes.</p>
+    <label class="check"><input type="checkbox" id="calendar-digest-shown"> Show tomorrow's events in the evening</label>
+    <label for="calendar-digest-time">At</label>
+    <input type="time" id="calendar-digest-time" style="width:140px">
+    <div class="inline" style="margin-top:10px"><button id="digest-test">Show tomorrow's events now</button></div>
+    <p class="hint" style="margin:6px 0 0">Reads the calendars and puts the card up on the TV straight away, even if
+      tomorrow is empty.</p>
+    <div class="result" id="digest-result"></div>
   </section>
 
   <section>
@@ -346,6 +392,7 @@
 <script>
 let state = null;   // last state from the SHIELD
 let cameraList = null;   // [{id, name}] from Home Assistant, once loaded
+let calendarList = null; // the same, for calendars
 let icons = new Map();   // mdi name → codepoint, from the SHIELD's bundled font
 let draft = null;   // edits not yet saved
 const $ = id => document.getElementById(id);
@@ -595,6 +642,7 @@ async function load() {
     hidden: new Set(state.hidden),
     actions: state.actions.map(a => ({...a})),
     cameras: [...state.cameras],
+    calendars: [...state.calendars],
   };
   $('single-press').innerHTML = '<option value="">Nothing</option>' + state.apps.map(a =>
     `<option value="${esc(a.pkg)}">${esc(a.label)}</option>`).join('') +
@@ -613,6 +661,18 @@ async function load() {
   $('radar-lightning-strike').value = state.radarLightningStrike;
   $('radar-lightning-miles').value = state.radarLightningMiles;
   $('alerts-shown').checked = state.alertsShown;
+  $('calendar-shown').checked = state.calendarShown;
+  draft.reminderTimes = state.reminderTimes.split(',').map(x => parseInt(x, 10)).filter(x => x > 0);
+  renderReminderTimes();
+  $('calendar-reminder-chime').checked = state.reminderChime;
+  $('calendar-digest-shown').checked = state.digestShown;
+  $('calendar-digest-time').value = state.digestTime;
+  const cs = state.calendarStatus || {};
+  $('calendar-now').innerHTML = cs.at === undefined ? 'Not read yet: the TV reads while the home screen is showing.' :
+    (cs.error && !cs.calendars ? `<span class="bad">${esc(cs.error)}</span>` :
+      `${cs.events} event${cs.events === 1 ? '' : 's'} today and tomorrow, from ${cs.calendars} calendar${cs.calendars === 1 ? '' : 's'}` +
+      (cs.error ? `<span class="bad">${esc(cs.error)}</span>` : '')) +
+    ` <span style="color:var(--dim)">(read ${esc(new Date(cs.at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}))})</span>`;
   $('alerts-severity').innerHTML = state.alertsSeverities.map(s =>
     `<option value="${esc(s)}">${esc(s)}${s === 'Severe' ? ' (warnings)' : s === 'Minor' ? ' (everything)' : ''}</option>`).join('');
   $('alerts-severity').value = state.alertsSeverity;
@@ -743,6 +803,24 @@ function render() {
     </div>`).join('') : '<div class="empty">No actions.</div>';
   draft.actions.forEach((_, i) => updateIcon(i));
   renderCameras();
+  renderCalendars();
+}
+
+/** Ticked calendars, then the rest of Home Assistant's; order doesn't matter, events merge by time. */
+function renderCalendars() {
+  const names = new Map((calendarList || []).map(c => [c.id, c.name]));
+  const rest = (calendarList || []).filter(c => !draft.calendars.includes(c.id));
+  const rows = draft.calendars.map(id => `
+    <div class="row">
+      <label class="check" style="margin:0"><input type="checkbox" data-cal="${esc(id)}" checked></label>
+      <span class="name"><span>${esc(names.get(id) || id)}</span><span class="pkg">${esc(id)}${calendarList && !names.has(id) ? ' · not in Home Assistant' : ''}</span></span>
+    </div>`).concat(rest.map(c => `
+    <div class="row">
+      <label class="check" style="margin:0"><input type="checkbox" data-cal="${esc(c.id)}"></label>
+      <span class="name"><span>${esc(c.name)}</span><span class="pkg">${esc(c.id)}</span></span>
+    </div>`));
+  $('calendars').innerHTML = rows.join('') || `<div class="empty">${calendarList
+    ? 'Home Assistant has no calendars.' : 'Showing every calendar. Load the list to choose.'}</div>`;
 }
 
 /** Ticked cameras first, in their saved order; then the rest of Home Assistant's. */
@@ -807,6 +885,14 @@ document.addEventListener('click', async e => {
 });
 
 document.addEventListener('change', e => {
+  const cal = e.target.dataset && e.target.dataset.cal;
+  if (cal) {
+    if (e.target.checked) { if (!draft.calendars.includes(cal)) draft.calendars.push(cal); }
+    else draft.calendars = draft.calendars.filter(x => x !== cal);
+    renderCalendars();
+    markDirty();
+    return;
+  }
   const id = e.target.dataset && e.target.dataset.cam;
   if (!id) return;
   if (e.target.checked) { if (!draft.cameras.includes(id)) draft.cameras.push(id); }
@@ -830,12 +916,27 @@ $('cameras-load').onclick = async () => {
   }
 };
 
+$('calendars-load').onclick = async () => {
+  const el = $('calendars-result');
+  el.textContent = 'Loading…'; el.className = 'result';
+  try {
+    const states = await haGet('states');
+    calendarList = states.filter(s => s.entity_id.startsWith('calendar.'))
+      .map(s => ({id: s.entity_id, name: s.attributes.friendly_name || s.entity_id}))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    el.textContent = '';
+    renderCalendars();
+  } catch (err) {
+    showResult(el, {ok: false, message: 'Could not load calendars: ' + err.message});
+  }
+};
+
 document.addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.field;
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
   if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
-      || /^(bg|ov|radar|alerts)-/.test(e.target.id)) markDirty();
+      || /^(bg|ov|radar|alerts|calendar)-/.test(e.target.id)) markDirty();
 });
 
 $('add-action').onclick = () => {
@@ -869,6 +970,49 @@ async function testAction(i) {
   showResult(el, await post('/api/run', {...haFields(), action: a}));
 }
 
+/** "10 min", "1 hour", "1 h 30 min", "1 day". */
+function leadText(m) {
+  if (m % 1440 === 0) return m / 1440 + (m === 1440 ? ' day' : ' days');
+  if (m < 60) return m + ' min';
+  if (m % 60 === 0) return m / 60 + (m === 60 ? ' hour' : ' hours');
+  return Math.floor(m / 60) + ' h ' + m % 60 + ' min';
+}
+
+/** Longest first, as they come before an event; each one removes itself on a click. */
+function renderReminderTimes() {
+  draft.reminderTimes.sort((a, b) => b - a);
+  $('reminder-times').innerHTML = draft.reminderTimes.map(m =>
+    `<button data-lead="${m}" title="Remove">${leadText(m)} before <span>✕</span></button>`).join('')
+    || '<div class="empty">No reminders.</div>';
+}
+
+$('reminder-times').addEventListener('click', e => {
+  const b = e.target.closest('button[data-lead]');
+  if (!b) return;
+  draft.reminderTimes = draft.reminderTimes.filter(m => m !== +b.dataset.lead);
+  renderReminderTimes();
+  markDirty();
+});
+
+function addReminderTime() {
+  const m = Math.round(parseFloat($('reminder-add-minutes').value));
+  if (!(m >= 1 && m <= 1440)) { $('reminder-add-minutes').focus(); return; }
+  if (!draft.reminderTimes.includes(m)) draft.reminderTimes.push(m);
+  $('reminder-add-minutes').value = '';
+  renderReminderTimes();
+  markDirty();
+}
+$('reminder-add').onclick = addReminderTime;
+$('reminder-add-minutes').addEventListener('keydown', e => { if (e.key === 'Enter') addReminderTime(); });
+
+$('digest-test').onclick = async () => {
+  showResult($('digest-result'), await post('/api/digest/test', {}));
+};
+
+$('reminders-test').onclick = async () => {
+  showResult($('reminders-result'), await post('/api/reminders/test', {}));
+};
+
 $('alerts-test').onclick = async () => {
   showResult($('alerts-result'), await post('/api/alerts/test', {}));
 };
@@ -884,6 +1028,8 @@ $('ha-test').onclick = async () => {
 };
 
 $('save').onclick = async () => {
+  // A time typed but not added yet is meant to be saved too.
+  if ($('reminder-add-minutes').value.trim()) addReminderTime();
   for (const [i, a] of draft.actions.entries()) {
     if (!a.data.trim()) continue;
     try { JSON.parse(a.data); }
@@ -898,6 +1044,12 @@ $('save').onclick = async () => {
     sleepMinutes: Math.max(1, Math.min(600, Math.round(parseFloat($('sleep-minutes').value) || 90))),
     sleepShown: $('sleep-shown').checked,
     cameras: draft.cameras,
+    calendarShown: $('calendar-shown').checked,
+    calendars: draft.calendars,
+    reminderTimes: draft.reminderTimes.join(', '),
+    reminderChime: $('calendar-reminder-chime').checked,
+    digestShown: $('calendar-digest-shown').checked,
+    digestTime: $('calendar-digest-time').value,
     radarShown: $('radar-shown').checked,
     radarSource: $('radar-source').value.trim(),
     alertsShown: $('alerts-shown').checked,
