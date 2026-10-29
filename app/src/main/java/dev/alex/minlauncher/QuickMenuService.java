@@ -44,9 +44,9 @@ import java.util.concurrent.Executors;
  * Any press while an overlay is up just closes it (the small radar goes full
  * screen instead). The service also hosts the
  * web config page, the rain radar pop-up ({@link RadarOverlay})
- * and the NWS alert banner ({@link AlertBanner}), since it is the one
- * component that is always running. Back closes the banner and steps the
- * radar down (full screen, corner, closed), when nothing else of ours is up.
+ * the NWS alert banner ({@link AlertBanner}) and calendar reminders
+ * ({@link EventReminders}), since it is the one component that is always
+ * running. Back closes the banner or a reminder and steps the radar down (full screen, corner, closed), when nothing else of ours is up.
  *
  * An accessibility service is the only way a non-system app sees keys meant
  * for other apps, and its TYPE_ACCESSIBILITY_OVERLAY windows need no
@@ -76,6 +76,7 @@ public class QuickMenuService extends AccessibilityService {
     private LightPanel lights;
     private RadarOverlay radar;
     private AlertBanner alerts;
+    private EventReminders reminders;
     private Store store;
     private WebConfigServer web;
 
@@ -114,8 +115,11 @@ public class QuickMenuService extends AccessibilityService {
         radar.start();
         alerts = new AlertBanner(this, wm, store);
         alerts.start();
+        reminders = new EventReminders(this, wm, store);
+        reminders.start();
         web = new WebConfigServer(this, store, () -> handler.post(radar::force),
-                () -> handler.post(alerts::test));
+                () -> handler.post(alerts::test), () -> handler.post(reminders::test),
+                () -> handler.post(reminders::testDigest));
         web.start();
         registerReceiver(screenOff, new IntentFilter(Intent.ACTION_SCREEN_OFF));
     }
@@ -130,10 +134,13 @@ public class QuickMenuService extends AccessibilityService {
         }
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (event.getRepeatCount() > 0) return true;
-            if (panel != null || cameras.isShowing() || alerts.isShowing() || radar.isShowing()) {
+            if (panel != null || cameras.isShowing() || alerts.isShowing() || reminders.isShowing()
+                    || radar.isShowing()) {
                 if (panel != null || cameras.isShowing()) {
                     hideMenu();
                     cameras.hide();
+                } else if (reminders.isShowing()) {
+                    reminders.dismiss();
                 } else if (alerts.isShowing()) {
                     alerts.dismiss();
                 } else if (radar.isFull()) {
@@ -169,9 +176,9 @@ public class QuickMenuService extends AccessibilityService {
     }
 
     /**
-     * The alert banner and the radar can't take focus (the app underneath
-     * keeps the remote), so their Back is caught here: the banner first, then
-     * the radar. Our other overlays handle their own Back.
+     * The reminder, the alert banner and the radar can't take focus (the app
+     * underneath keeps the remote), so their Back is caught here, in that
+     * order. Our other overlays handle their own Back.
      */
     private boolean onBack(KeyEvent event) {
         if (swallowBack) {
@@ -182,6 +189,11 @@ public class QuickMenuService extends AccessibilityService {
         if (event.getAction() != KeyEvent.ACTION_DOWN || panel != null || cameras.isShowing()
                 || lights.isShowing()) {
             return false;
+        }
+        if (reminders.isShowing()) {
+            reminders.dismiss();
+            swallowBack = true;
+            return true;
         }
         if (alerts.isShowing()) {
             alerts.dismiss();
@@ -238,6 +250,7 @@ public class QuickMenuService extends AccessibilityService {
         if (lights != null) lights.shutdown();
         if (radar != null) radar.shutdown();
         if (alerts != null) alerts.shutdown();
+        if (reminders != null) reminders.shutdown();
         if (web != null) web.stop();
         calls.shutdownNow();
         super.onDestroy();

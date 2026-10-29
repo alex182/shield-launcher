@@ -55,6 +55,24 @@
             android:shadowDy="1"
             android:shadowRadius="8" />
 
+        <!-- Today's events from Home Assistant (AgendaController); gone when there are none.
+             The gap below sets them apart from the weather, and goes with the line. -->
+        <TextView
+            android:id="@+id/agenda"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="14dp"
+            android:visibility="gone"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:textSize="18sp"
+            android:textColor="@color/subtitle"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="@color/subtitle_shadow"
+            android:shadowDy="1"
+            android:shadowRadius="8" />
+
         <!-- Daily forecast from Home Assistant; gone when there is none. -->
         <TextView
             android:id="@+id/forecast"

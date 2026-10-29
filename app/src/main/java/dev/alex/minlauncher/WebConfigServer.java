@@ -38,16 +38,19 @@ final class WebConfigServer implements Runnable {
 
     private final Context context;
     private final Store store;
-    /** Put the radar, or a test alert, up on the TV; the service hops to the main thread. */
-    private final Runnable showRadar, testAlert;
+    /** Put the radar or a test alert, reminder or evening summary up on the TV; the service hops to the main thread. */
+    private final Runnable showRadar, testAlert, testReminder, testDigest;
     private ServerSocket server;
     private Thread thread;
 
-    WebConfigServer(Context context, Store store, Runnable showRadar, Runnable testAlert) {
+    WebConfigServer(Context context, Store store, Runnable showRadar, Runnable testAlert,
+            Runnable testReminder, Runnable testDigest) {
         this.context = context.getApplicationContext();
         this.store = store;
         this.showRadar = showRadar;
         this.testAlert = testAlert;
+        this.testReminder = testReminder;
+        this.testDigest = testDigest;
     }
 
     void start() {
@@ -141,6 +144,12 @@ final class WebConfigServer implements Runnable {
             } else if (method.equals("POST") && path.equals("/api/alerts/test")) {
                 testAlert.run();
                 sendResult(client, () -> "Test alert on the TV");
+            } else if (method.equals("POST") && path.equals("/api/reminders/test")) {
+                testReminder.run();
+                sendResult(client, () -> "Test reminder on the TV");
+            } else if (method.equals("POST") && path.equals("/api/digest/test")) {
+                testDigest.run();
+                sendResult(client, () -> "Tomorrow's events on the TV");
             } else if (method.equals("POST") && path.equals("/api/run")) {
                 JSONObject o = new JSONObject(text);
                 Store.Action a = Store.Action.fromJson(o.getJSONObject("action"));
@@ -243,6 +252,13 @@ final class WebConfigServer implements Runnable {
                 .put("sleepMinutes", store.sleepMinutes())
                 .put("sleepShown", store.sleepShown())
                 .put("cameras", new JSONArray(store.cameras()))
+                .put("calendarShown", store.calendarShown())
+                .put("calendars", new JSONArray(store.calendars()))
+                .put("calendarStatus", new JSONObject(store.calendarStatus()))
+                .put("reminderTimes", Agenda.formatLeads(store.reminderTimes()))
+                .put("reminderChime", store.reminderChime())
+                .put("digestShown", store.digestShown())
+                .put("digestTime", store.digestTime())
                 .put("radarShown", store.radarShown())
                 .put("radarSource", store.radarSource())
                 .put("radarDefault", Store.DEFAULT_RADAR)
@@ -297,6 +313,14 @@ final class WebConfigServer implements Runnable {
         if (o.has("singlePress")) store.setSinglePress(o.getString("singlePress"));
         if (o.has("sleepMinutes")) store.setSleep(o.getInt("sleepMinutes"), o.optBoolean("sleepShown", true));
         if (o.has("cameras")) store.setCameras(strings(o.getJSONArray("cameras")));
+        if (o.has("calendarShown")) {
+            JSONArray c = o.optJSONArray("calendars");
+            store.setCalendars(o.getBoolean("calendarShown"), c == null ? store.calendars() : strings(c));
+        }
+        if (o.has("digestShown")) store.setDigest(o.getBoolean("digestShown"), o.optString("digestTime"));
+        if (o.has("reminderTimes")) {
+            store.setReminders(o.getString("reminderTimes"), o.optBoolean("reminderChime", true));
+        }
         if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
         if (o.has("alertsShown")) {
             store.setAlerts(o.getBoolean("alertsShown"), o.optString("alertsSeverity"),

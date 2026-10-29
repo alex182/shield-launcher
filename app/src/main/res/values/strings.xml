@@ -39,4 +39,10 @@
     <string name="light_white">White</string>
     <string name="light_color">Color</string>
     <string name="light_no_controls">These lights only turn on and off</string>
+    <string name="reminder_in">STARTS IN %d MIN</string>
+    <string name="reminder_now">STARTING NOW</string>
+    <string name="reminder_test">Test reminder</string>
+    <string name="digest_heading">Tomorrow · %s</string>
+    <string name="digest_nothing">Nothing on the calendar</string>
+    <string name="digest_more">+%d more</string>
 </resources>

@@ -56,9 +56,11 @@ public class MainActivity extends Activity {
     private BroadcastReceiver timeTick;
     private Store store;
     private BackgroundController background;
+    private AgendaController agenda;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable rebuild = this::rebuildKeepingFocus;
     private final Runnable refreshBackground = () -> background.refresh();
+    private final Runnable refreshAgenda = () -> agenda.refresh();
     /** Pins, hides and background settings can change from the web page while this is showing. */
     private final SharedPreferences.OnSharedPreferenceChangeListener prefsChanged =
             (p, key) -> {
@@ -77,8 +79,16 @@ public class MainActivity extends Activity {
                     case Store.KEY_SCRIM_END:
                         background.applyScrim();
                         break;
+                    case Store.KEY_CALENDAR_SHOWN:
+                    case Store.KEY_CALENDARS:
+                        handler.removeCallbacks(refreshAgenda);
+                        handler.post(refreshAgenda);
+                        break;
                     case Store.KEY_HA_URL:
                     case Store.KEY_HA_TOKEN:
+                        handler.removeCallbacks(refreshAgenda);
+                        handler.post(refreshAgenda);
+                        // falls through: the background reads Home Assistant too
                     case Store.KEY_BG_WEATHER:
                     case Store.KEY_BG_SUN:
                     case Store.KEY_BG_SEASON:
@@ -105,11 +115,13 @@ public class MainActivity extends Activity {
         background = new BackgroundController(this, store,
                 findViewById(R.id.background), findViewById(R.id.scrim), findViewById(R.id.weather),
                 findViewById(R.id.forecast));
+        agenda = new AgendaController(store, findViewById(R.id.agenda));
 
         timeTick = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) {
                 updateClock();
                 background.onTimeTick();
+                agenda.onTimeTick();
             }
         };
     }
@@ -118,6 +130,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         background.shutdown();
+        agenda.shutdown();
     }
 
     @Override
@@ -131,6 +144,7 @@ public class MainActivity extends Activity {
         buildList(null);   // rebuild so installs/uninstalls show up immediately
         store.prefs().registerOnSharedPreferenceChangeListener(prefsChanged);
         background.start();
+        agenda.start();
         RadarOverlay.setHomeShowing(true);
     }
 
@@ -140,6 +154,7 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(timeTick); } catch (IllegalArgumentException ignored) { }
         store.prefs().unregisterOnSharedPreferenceChangeListener(prefsChanged);
         background.stop();
+        agenda.stop();
         RadarOverlay.setHomeShowing(false);
     }
 

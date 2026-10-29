@@ -25,8 +25,8 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `TileFlow` (wrapping banner row) |
-| `app/src/test/` | JVM unit tests (`Backgrounds`, `TileFlow` wrapping); JUnit is test-only |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row) |
+| `app/src/test/` | JVM unit tests (`Backgrounds`, `Agenda`, `Alerts`, `Lights`, `TileFlow` wrapping); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
 | `tools/update-mdi.sh` | refresh the bundled icon font |
@@ -218,11 +218,59 @@ images; new images or focal elements reach the TVs with the next
     preview weather during a holiday. Set them back to Automatic afterwards.
   - Every pick is logged: `adb logcat -s Backgrounds`.
 
+## Calendar
+
+Today's events from Home Assistant's calendars (`AgendaController`), as one
+line right under the date on HOME and the screensaver, styled like the forecast:
+`Bin day · 16:00 Therapy · +1 more`. All-day events come first, then by start
+time; the first two are named and the rest counted. One under way reads
+`Therapy until 17:00`. Finished events drop off on the minute. After the
+day's last event it shows tomorrow's instead, `Tomorrow · 09:00 Dentist`, and
+it is gone when there's nothing today or tomorrow.
+
+- **Which calendars:** every `calendar.*` entity (`GET /api/calendars`)
+  except the Workday integration's (any id containing `workday`; it marks
+  every working day), or the ones ticked in the config page's Calendar
+  section. The same event in two calendars shows once.
+- **Reading:** `GET /api/calendars/<entity>?start=…&end=…` for today and
+  tomorrow, every 5 minutes while HOME or the screensaver is showing, at
+  midnight, and right after a settings change. When Home Assistant is
+  unreachable the last events stay up.
+- **Debugging:** the Calendar section shows the last read (events, calendars,
+  errors); `adb logcat -s Agenda`.
+
+### Reminders
+
+`EventReminders` (in the quick actions service, so over any app) pops a card
+up in the top-right corner at each set time before a timed event in the same
+calendars starts (10 minutes by default; a list such as `60, 30, 10` gives
+one at each): "STARTS IN 10 MIN", the event and its time, and a soft
+two-note chime (generated, E5 then C5) that ducks what's playing, like the
+alert tone (media usage, so it reaches Bluetooth speakers too). It goes by
+itself after a minute; Back or the Netflix button closes it sooner. Events
+starting together share one card. All-day events get none.
+
+- **Settings:** the config page's Calendar section: the reminder times, added and
+  removed one by one (none turns reminders off), the chime, and "Send a test reminder", which puts a
+  made-up event up on the TV.
+- **Timing:** only while the screen is on. It looks every minute and re-reads
+  Home Assistant every 5. Each reminder comes once (kept in `reminders_seen`
+  until the event starts), so a restart doesn't chime again. A TV turned on
+  late gets only the latest reminder due: on 20 minutes before, with
+  `60, 30, 10`, it chimes once at 10, not three times.
+- **Evening summary:** at 20:30 (a setting, or off) a card in the same
+  corner lists tomorrow's events, "TOMORROW · FRIDAY, 30 OCTOBER" then one
+  row each (time, or All day), up to six, with the chime if it's on. It
+  stays two minutes. Once a day: a TV that is off at 20:30 gets it when
+  turned on before midnight. Nothing tomorrow, no card. The config page's
+  "Show tomorrow's events now" puts it up straight away, empty or not.
+- **Debugging:** `adb logcat -s Reminders`.
+
 ## Screensaver
 
 `BackgroundDream` is an Android screensaver ("Flint Hills"): the home screen's
-background full screen, with the clock, date, forecast and current weather in
-the image's quiet left side. It picks and refreshes the image the same way
+background full screen, with the clock, date, forecast, current weather and
+today's events in the image's quiet left side. It picks and refreshes the image the same way
 HOME does (same focal element, season, time, weather and holiday, crossfading
 when they change). The picture is dimmed with 45% black (`dream_dim` in
 `colors.xml`; a SHIELD can't dim the TV itself), and the text drifts a little
