@@ -25,11 +25,12 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row) |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`, `VisualizerOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row) |
 | `app/src/test/` | JVM unit tests (`Backgrounds`, `Agenda`, `Alerts`, `Lights`, `TileFlow` wrapping); JUnit is test-only |
-| `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font) |
+| `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font), `visualizer/` (butterchurn page and presets) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
 | `tools/update-mdi.sh` | refresh the bundled icon font |
+| `tools/update-butterchurn.sh` | refresh the bundled visualizer library and presets |
 | `.devcontainer/` | JDK 17 + Android SDK 34 + Gradle 8.5 image |
 | `keystore/debug.keystore` | pinned signing key (see below) |
 
@@ -147,10 +148,71 @@ The attention signal is for real emergencies when broadcast (47 CFR 11.45);
 this only plays it on the TV in the room, for a real NWS alert or a test
 someone asked for.
 
+## Music visualizer
+
+Hold play/pause (1 s) over any app for Milkdrop visuals full screen
+(`VisualizerOverlay`): [butterchurn](https://github.com/jberg/butterchurn)
+in a WebView, with its main pack of 100 presets, both MIT and bundled in
+`assets/visualizer/` (`tools/update-butterchurn.sh [version] [presets]`
+refreshes them). Hold play/pause again, Back or the Netflix button closes it.
+The config page's **Show on the TV now** opens it too.
+
+| Key | Does |
+| --- | --- |
+| Left / right | previous / next preset |
+| Up | like this preset, or unlike it |
+| Down | a random preset |
+| Select | hold this preset (stop cycling); again to cycle |
+| Play/pause, volume, media keys | still go to the player |
+
+- **Settings** (config page, Music visualizer) copy butterchurnviz.com's,
+  with its defaults: select a preset, cycle presets every 25 s, randomize
+  next preset, auto / user-solicited blend (2.7 s / 5.7 s), frame limit
+  (30), canvas size and mesh size (48 × 36). Canvas size is the exception:
+  0.67× native (720p) by default, and no 2×/4×, for the Tegra's sake. They
+  apply live: the TV page re-reads them every second.
+- **Liked presets**: up on the remote, or Like on the config page next to
+  the preset on screen, saves a like straight away (`visualizer_liked`, kept
+  apart from the settings so the page's Save can't undo a like made on the
+  TV). *Cycle through: only liked presets* keeps the timer and the arrows to
+  them; the page's **Play** buttons open the visualizer on the liked list (from
+  one preset, or anywhere) for that showing only (`POST /api/visualizer/show`
+  with `playlist`, `preset`; likes go through `POST /api/visualizer/like`).
+- **Sound** ("Listen to"): *whatever is playing* (default), *one app*,
+  *the whole output mix* or *a microphone*. The first two use
+  `android.media.audiofx.Visualizer` on the app's own audio session, found in
+  `dumpsys media.audio_flinger`'s track tables (`AudioSessions`) and checked
+  again every 2 s, so it follows a new song, player or app. The page pulls the
+  latest 1024-sample waveform each frame through a JS bridge and hands it to
+  butterchurn in place of WebAudio.
+  - The output mix (session 0) would need no lookup, but it doesn't work on
+    the SHIELD: media goes out through a bus device (`AUDIO_DEVICE_OUT_BUS`),
+    and session 0's capture lands on another, idle output and hears
+    silence. That's why the visuals didn't follow the music at first.
+  - The microphone is `AudioRecord` on a USB mic; the remote's mic only opens
+    for voice search.
+  - The config page shows what it's listening to and which apps are playing
+    now (`GET /api/visualizer`), from the status the overlay writes
+    (`visualizer_status`).
+  - `./build.sh install` grants both permissions it needs, `DUMP` (the
+    lookup) and `RECORD_AUDIO` (the capture); without either, the presets run
+    to silence and say which is missing. Audio sent to a receiver as encoded
+    passthrough (Dolby, DTS) is never captured, so it stays flat then too.
+- **Play/pause is held back:** the service can't tell a press from a hold
+  until the button comes up, so it swallows the press and, if it was short,
+  sends play/pause on with `AudioManager.dispatchMediaKeyEvent`. That
+  reaches players through their media session (Tidal, Jellyfin, YouTube and
+  the like); a player that only reads keys in its own window would stop
+  pausing. Untick "Hold play/pause for the visualizer" and play/pause goes
+  straight through again.
+- **Window:** keeps the screen on and closes when the screen turns off.
+  `adb logcat -s Visualizer chromium` for problems; it logs each session it
+  attaches to.
+
 ## Web config page
 
 `http://<shield-ip>:8080` (Office `192.168.1.209`, Livingroom `192.168.1.197`)
-edits pins, hidden apps, quick actions, hold time and the Home Assistant URL
+edits pins, hidden apps, quick actions, hold time, the visualizer and the Home Assistant URL
 and token, live, per device. "From Home Assistant…" on an action lists your entities
 (filterable: automations, scenes, scripts, lights, …); tick one or more of
 the same kind (say two lights, or several automations), then pick one of the

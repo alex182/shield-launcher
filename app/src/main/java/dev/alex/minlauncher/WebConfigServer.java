@@ -38,19 +38,24 @@ final class WebConfigServer implements Runnable {
 
     private final Context context;
     private final Store store;
-    /** Put the radar or a test alert, reminder or evening summary up on the TV; the service hops to the main thread. */
+    /** Put the radar, the visualizer or a test alert, reminder or evening summary up on the TV; the service hops to the main thread. */
     private final Runnable showRadar, testAlert, testReminder, testDigest;
+    private final ShowVisualizer showVisualizer;
+
+    /** {@link VisualizerOverlay#show(String, String)}, on the main thread. */
+    interface ShowVisualizer { void show(String playlist, String preset); }
     private ServerSocket server;
     private Thread thread;
 
     WebConfigServer(Context context, Store store, Runnable showRadar, Runnable testAlert,
-            Runnable testReminder, Runnable testDigest) {
+            Runnable testReminder, Runnable testDigest, ShowVisualizer showVisualizer) {
         this.context = context.getApplicationContext();
         this.store = store;
         this.showRadar = showRadar;
         this.testAlert = testAlert;
         this.testReminder = testReminder;
         this.testDigest = testDigest;
+        this.showVisualizer = showVisualizer;
     }
 
     void start() {
@@ -118,6 +123,21 @@ final class WebConfigServer implements Runnable {
                 send(client, 200, "font/ttf", asset(Icons.FONT), true);
             } else if (method.equals("GET") && path.equals("/mdi-names.tsv")) {
                 send(client, 200, "text/plain; charset=utf-8", asset(Icons.NAMES), true);
+            } else if (method.equals("GET") && path.equals("/visualizer-presets.js")) {
+                // The page lists preset names from the same bundle the TV draws.
+                send(client, 200, "text/javascript; charset=utf-8",
+                        asset("visualizer/butterchurnPresets.min.js"), true);
+            } else if (method.equals("GET") && path.equals("/api/visualizer")) {
+                send(client, 200, "application/json", visualizerNow().toString());
+            } else if (method.equals("POST") && path.equals("/api/visualizer/show")) {
+                JSONObject o = text.isEmpty() ? new JSONObject() : new JSONObject(text);
+                showVisualizer.show(o.optString("playlist"), o.optString("preset"));
+                sendResult(client, () -> "Showing on the TV");
+            } else if (method.equals("POST") && path.equals("/api/visualizer/like")) {
+                // Saved at once, not with the page's Save: the TV likes too.
+                JSONObject o = new JSONObject(text);
+                store.setVisualizerLiked(o.getString("preset"), o.getBoolean("liked"));
+                send(client, 200, "application/json", visualizerNow().toString());
             } else if (method.equals("GET") && path.equals("/api/state")) {
                 send(client, 200, "application/json", state().toString());
             } else if (method.equals("POST") && path.equals("/api/state")) {
@@ -259,6 +279,8 @@ final class WebConfigServer implements Runnable {
                 .put("reminderChime", store.reminderChime())
                 .put("digestShown", store.digestShown())
                 .put("digestTime", store.digestTime())
+                .put("visualizerHold", store.visualizerHold())
+                .put("visualizer", store.visualizer())
                 .put("radarShown", store.radarShown())
                 .put("radarSource", store.radarSource())
                 .put("radarDefault", Store.DEFAULT_RADAR)
@@ -274,6 +296,25 @@ final class WebConfigServer implements Runnable {
                 .put("haUrl", store.haUrl())
                 .put("haTokenSet", !store.haToken().isEmpty())
                 .put("background", background());
+    }
+
+    /**
+     * What the visualizer listens to (its last status), the preset it shows,
+     * the liked ones, and what is playing right now, for picking an app;
+     * polled by the page, so it is kept out of /api/state.
+     */
+    private JSONObject visualizerNow() throws JSONException {
+        String dump = AudioSessions.dump(context);
+        JSONArray playing = new JSONArray();
+        for (AudioSessions.Playing p : AudioSessions.active(dump, android.os.Process.myPid())) {
+            playing.put(new JSONObject().put("session", p.session).put("pkg", p.pkg));
+        }
+        return new JSONObject()
+                .put("status", new JSONObject(store.visualizerStatus()))
+                .put("showing", store.visualizerShowing())
+                .put("liked", store.visualizerLiked())
+                .put("playing", playing)
+                .put("dumpDenied", AudioSessions.denied(dump));
     }
 
     private JSONObject background() throws JSONException {
@@ -320,6 +361,10 @@ final class WebConfigServer implements Runnable {
         if (o.has("digestShown")) store.setDigest(o.getBoolean("digestShown"), o.optString("digestTime"));
         if (o.has("reminderTimes")) {
             store.setReminders(o.getString("reminderTimes"), o.optBoolean("reminderChime", true));
+        }
+        if (o.has("visualizerHold")) {
+            JSONObject v = o.optJSONObject("visualizer");
+            store.setVisualizer(o.getBoolean("visualizerHold"), v == null ? store.visualizer() : v);
         }
         if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
         if (o.has("alertsShown")) {

@@ -177,6 +177,96 @@
   </section>
 
   <section>
+    <h2>Music visualizer</h2>
+    <p class="hint">Hold play/pause on the remote for Milkdrop visuals (butterchurn) over whatever is playing; hold it again
+      or press Back to close. On the TV: left/right change the preset, up likes (or unlikes) it, down picks one at
+      random, select holds the current one. A short press still plays and pauses, sent on to the app as a media key. Saved changes apply
+      straight away, also while it's showing.</p>
+    <label class="check"><input type="checkbox" id="visualizer-hold"> Hold play/pause for the visualizer</label>
+    <div class="inline" style="margin-top:10px"><button id="visualizer-show">Show on the TV now</button></div>
+    <div class="result" id="visualizer-result"></div>
+
+    <h3 class="sub">Audio</h3>
+    <div class="grid">
+      <div>
+        <label for="viz-source">Listen to</label>
+        <select id="viz-source">
+          <option value="auto">Whatever is playing</option>
+          <option value="app">One app</option>
+          <option value="mix">Whole output mix</option>
+          <option value="mic">Microphone</option>
+        </select>
+      </div>
+      <div id="viz-app-wrap">
+        <label for="viz-app">App</label>
+        <select id="viz-app"></select>
+      </div>
+    </div>
+    <p class="hint" style="margin:6px 0 0" id="viz-source-hint"></p>
+    <div class="now" id="viz-now" style="margin-top:10px">…</div>
+
+    <h3 class="sub">Presets</h3>
+    <label for="viz-preset">Select a preset</label>
+    <select id="viz-preset"><option value="">Random</option></select>
+    <label for="viz-playlist">Cycle through</label>
+    <select id="viz-playlist">
+      <option value="all">All presets</option>
+      <option value="liked">Only liked presets</option>
+    </select>
+    <label class="check"><input type="checkbox" id="viz-cycle"> Cycle presets every
+      <input type="number" id="viz-cycle-seconds" min="1" max="3600" step="1" style="width:80px"> seconds</label>
+    <label class="check"><input type="checkbox" id="viz-randomize"> Randomize next preset</label>
+
+    <h3 class="sub">Liked presets</h3>
+    <p class="hint" style="margin:6px 0 0">Press up on the remote to like the preset showing, or like it here. Likes save
+      straight away; Play opens the visualizer on the TV.</p>
+    <div class="now" id="viz-showing" style="margin-top:10px">…</div>
+    <div class="inline" style="margin-top:10px"><button id="viz-play-liked">Play liked presets on the TV</button></div>
+    <div class="result" id="viz-liked-result"></div>
+    <div id="viz-liked" style="margin-top:6px"></div>
+
+    <h3 class="sub">Blending</h3>
+    <div class="grid">
+      <div>
+        <label for="viz-auto-blend">Auto preset blend for (seconds)</label>
+        <input type="number" id="viz-auto-blend" min="0" max="60" step="0.1" style="width:90px">
+      </div>
+      <div>
+        <label for="viz-user-blend">User solicited preset blend for (seconds)</label>
+        <input type="number" id="viz-user-blend" min="0" max="60" step="0.1" style="width:90px">
+      </div>
+    </div>
+    <p class="hint" style="margin:6px 0 0">Auto: when the timer changes preset. User solicited: picked on the remote or here.</p>
+
+    <h3 class="sub">Rendering</h3>
+    <div class="grid3">
+      <div>
+        <label for="viz-frame-limit">Frame Limit</label>
+        <select id="viz-frame-limit">
+          <option value="15">15</option><option value="30">30</option><option value="45">45</option>
+          <option value="60">60</option><option value="0">Native</option>
+        </select>
+      </div>
+      <div>
+        <label for="viz-canvas-size">Canvas Size</label>
+        <select id="viz-canvas-size">
+          <option value="0.25">0.25x Native</option><option value="0.5">0.5x Native</option>
+          <option value="0.67">0.67x Native (720p)</option><option value="1">Native (1080p)</option>
+        </select>
+      </div>
+      <div>
+        <label for="viz-mesh-size">Mesh Size</label>
+        <select id="viz-mesh-size">
+          <option value="18">24 x 18</option><option value="24">32 x 24</option><option value="36">48 x 36</option>
+          <option value="48">64 x 48</option><option value="72">96 x 72</option><option value="96">128 x 96</option>
+        </select>
+      </div>
+    </div>
+    <p class="hint" style="margin:6px 0 0">The choices from butterchurnviz.com, less its 2x and 4x canvases. Bigger canvases
+      and meshes are sharper but slower; drop them if the picture stutters.</p>
+  </section>
+
+  <section>
     <h2>Cameras</h2>
     <p class="hint">Double-press the Netflix button to see these over any app. Tick the cameras to show and
       put them in order; with none ticked, every camera in Home Assistant is shown.</p>
@@ -654,6 +744,7 @@ async function load() {
   $('hold').value = state.holdMs / 1000;
   $('sleep-minutes').value = state.sleepMinutes;
   $('sleep-shown').checked = state.sleepShown;
+  loadVisualizer();
   $('radar-shown').checked = state.radarShown;
   $('radar-source').value = state.radarSource;
   $('radar-source').placeholder = state.radarDefault;
@@ -936,7 +1027,7 @@ document.addEventListener('input', e => {
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
   if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
-      || /^(bg|ov|radar|alerts|calendar)-/.test(e.target.id)) markDirty();
+      || /^(bg|ov|radar|alerts|calendar|visualizer|viz)-/.test(e.target.id)) markDirty();
 });
 
 $('add-action').onclick = () => {
@@ -1017,6 +1108,159 @@ $('alerts-test').onclick = async () => {
   showResult($('alerts-result'), await post('/api/alerts/test', {}));
 };
 
+// ------------------------------------------------------------- visualizer
+
+const SOURCE_HINTS = {
+  auto: 'Follows the app that is playing, switching when another one starts.',
+  app: 'Only this app\'s sound; the visuals wait while it isn\'t playing.',
+  mix: 'Everything the SHIELD plays, mixed. On a SHIELD this usually hears nothing: media goes out a way the mix capture doesn\'t see.',
+  mic: 'A microphone plugged into the SHIELD (USB). The remote\'s only opens for voice search.',
+};
+let presetNames = null;
+
+function appLabel(pkg) {
+  const a = state && state.apps.find(a => a.pkg === pkg);
+  return a ? a.label : pkg || 'an unnamed app';
+}
+
+function loadVisualizer() {
+  const v = state.visualizer;
+  $('visualizer-hold').checked = state.visualizerHold;
+  $('viz-source').value = v.source;
+  $('viz-app').innerHTML = state.apps.map(a => `<option value="${esc(a.pkg)}">${esc(a.label)}</option>`).join('') +
+    (v.app && !state.apps.some(a => a.pkg === v.app) ? `<option value="${esc(v.app)}">${esc(v.app)}</option>` : '');
+  $('viz-app').value = v.app || 'com.aspiro.tidal';
+  $('viz-playlist').value = v.playlist;
+  $('viz-cycle').checked = v.cycle;
+  $('viz-cycle-seconds').value = v.cycleSeconds;
+  $('viz-randomize').checked = v.randomize;
+  $('viz-auto-blend').value = v.autoBlend;
+  $('viz-user-blend').value = v.userBlend;
+  $('viz-frame-limit').value = String(v.frameLimit);
+  $('viz-canvas-size').value = String(v.canvasSize);
+  $('viz-mesh-size').value = String(v.meshSize);
+  renderPresets(v.preset);
+  sourceChanged();
+}
+
+/** The names come from the same preset bundle the TV draws, fetched once. */
+function renderPresets(selected) {
+  const sel = $('viz-preset');
+  if (presetNames) {
+    sel.innerHTML = '<option value="">Random</option>' +
+      presetNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  } else if (selected) {
+    sel.innerHTML = `<option value="">Random</option><option value="${esc(selected)}">${esc(selected)}</option>`;
+  }
+  sel.value = selected;
+}
+
+function loadPresetNames() {
+  const s = document.createElement('script');
+  s.src = '/visualizer-presets.js';
+  s.onload = () => {
+    const pack = window.butterchurnPresets.default || window.butterchurnPresets;
+    presetNames = Object.keys(pack.getPresets());
+    renderPresets(state ? state.visualizer.preset : '');
+  };
+  document.head.appendChild(s);
+}
+
+function sourceChanged() {
+  $('viz-app-wrap').hidden = $('viz-source').value !== 'app';
+  $('viz-source-hint').textContent = SOURCE_HINTS[$('viz-source').value];
+}
+$('viz-source').onchange = sourceChanged;
+
+function visualizerFields() {
+  const num = (id, d) => (v => isNaN(v) ? d : v)(parseFloat($(id).value));
+  return {
+    source: $('viz-source').value,
+    app: $('viz-app').value,
+    preset: $('viz-preset').value,
+    playlist: $('viz-playlist').value,
+    cycle: $('viz-cycle').checked,
+    cycleSeconds: Math.max(1, Math.min(3600, Math.round(num('viz-cycle-seconds', 25)))),
+    randomize: $('viz-randomize').checked,
+    autoBlend: Math.max(0, Math.min(60, num('viz-auto-blend', 2.7))),
+    userBlend: Math.max(0, Math.min(60, num('viz-user-blend', 5.7))),
+    frameLimit: parseInt($('viz-frame-limit').value, 10),
+    canvasSize: parseFloat($('viz-canvas-size').value),
+    meshSize: parseInt($('viz-mesh-size').value, 10),
+  };
+}
+
+/** What it listens to, and what is playing now; refreshed every few seconds. */
+async function renderVisualizerNow() {
+  let n;
+  try { n = await (await fetch('/api/visualizer')).json(); } catch (err) { return; }
+  const st = n.status || {};
+  const listening = {
+    app: () => `Listening to <code>${esc(appLabel(st.pkg))}</code> (audio session ${st.session})`,
+    mix: () => 'Listening to the whole output mix (session 0)',
+    mic: () => 'Listening to the microphone',
+    waiting: () => `Waiting for <code>${esc(appLabel(st.pkg))}</code> to play`,
+    none: () => 'Not hearing anything',
+    closed: () => 'Closed',
+  }[st.listening];
+  const playing = n.playing.length
+    ? 'Playing now: ' + n.playing.map(p => `${esc(appLabel(p.pkg))} <span style="color:var(--dim)">(session ${p.session})</span>`).join(', ')
+    : 'Nothing is playing right now.';
+  $('viz-now').innerHTML = (listening ? listening() : 'Not opened yet') +
+    (st.at && st.listening !== 'closed' ? ` <span style="color:var(--dim)">(since ${esc(new Date(st.at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}))})</span>` : '') +
+    (st.note && st.listening !== 'closed' ? `<span class="bad">${esc(st.note)}</span>` : '') +
+    `<span class="why">${n.dumpDenied ? 'Can\'t see which apps are playing: grant the launcher DUMP (build.sh install does).' : playing}</span>`;
+  vizShowing = n.showing || '';
+  vizLiked = n.liked || [];
+  renderLiked();
+}
+
+let vizShowing = '', vizLiked = [];
+
+/** The preset on the TV, to like there, and the liked list, newest first. */
+function renderLiked() {
+  const isLiked = vizLiked.includes(vizShowing);
+  $('viz-showing').innerHTML = vizShowing
+    ? `On the TV: <code>${esc(vizShowing)}</code> <button data-like="${esc(vizShowing)}" data-liked="${!isLiked}"
+        style="margin-left:8px">${isLiked ? '♥ Liked' : '♡ Like'}</button>`
+    : '<span style="color:var(--dim)">The visualizer isn\'t showing.</span>';
+  $('viz-play-liked').disabled = !vizLiked.length;
+  $('viz-liked').innerHTML = vizLiked.length ? vizLiked.slice().reverse().map(n => `
+    <div class="row">
+      <span class="name">♥ ${esc(n)}</span>
+      <button data-play="${esc(n)}">Play</button>
+      <button data-like="${esc(n)}" data-liked="false">Remove</button>
+    </div>`).join('') : '<div class="empty">Nothing liked yet.</div>';
+}
+
+async function likePreset(preset, liked) {
+  const r = await post('/api/visualizer/like', {preset, liked});
+  if (r.error) { showResult($('viz-liked-result'), {ok: false, message: r.error}); return; }
+  vizShowing = r.showing || '';
+  vizLiked = r.liked || [];
+  renderLiked();
+}
+
+async function playOnTv(body) {
+  showResult($('viz-liked-result'), await post('/api/visualizer/show', body));
+  setTimeout(renderVisualizerNow, 1500);
+}
+
+for (const id of ['viz-showing', 'viz-liked']) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.like !== undefined) likePreset(b.dataset.like, b.dataset.liked === 'true');
+    else if (b.dataset.play) playOnTv({playlist: 'liked', preset: b.dataset.play});
+  });
+}
+$('viz-play-liked').onclick = () => playOnTv({playlist: 'liked'});
+
+$('visualizer-show').onclick = async () => {
+  showResult($('visualizer-result'), await post('/api/visualizer/show', {}));
+  setTimeout(renderVisualizerNow, 2500);
+};
+
 $('radar-show').onclick = async () => {
   showResult($('radar-result'), await post('/api/radar/show', {}));
 };
@@ -1050,6 +1294,8 @@ $('save').onclick = async () => {
     reminderChime: $('calendar-reminder-chime').checked,
     digestShown: $('calendar-digest-shown').checked,
     digestTime: $('calendar-digest-time').value,
+    visualizerHold: $('visualizer-hold').checked,
+    visualizer: visualizerFields(),
     radarShown: $('radar-shown').checked,
     radarSource: $('radar-source').value.trim(),
     alertsShown: $('alerts-shown').checked,
@@ -1085,6 +1331,9 @@ window.addEventListener('beforeunload', e => { if (!$('save').disabled) e.preven
 
 // Icons first, so the first render has previews; a failure only costs previews.
 loadIcons().catch(() => {}).then(load).catch(err => { $('status').textContent = 'Could not reach the SHIELD: ' + err.message; });
+loadPresetNames();
+renderVisualizerNow();
+setInterval(renderVisualizerNow, 5000);
 </script>
 </body>
 </html>

@@ -42,7 +42,9 @@ import java.util.concurrent.Executors;
  *       Assistant.</li>
  * </ul>
  * Any press while an overlay is up just closes it (the small radar goes full
- * screen instead). The service also hosts the
+ * screen instead). Holding play/pause opens or closes the music visualizer
+ * ({@link VisualizerOverlay}); a short press is held back until release, then
+ * sent on as a media key. The service also hosts the
  * web config page, the rain radar pop-up ({@link RadarOverlay})
  * the NWS alert banner ({@link AlertBanner}) and calendar reminders
  * ({@link EventReminders}), since it is the one component that is always
@@ -65,14 +67,18 @@ public class QuickMenuService extends AccessibilityService {
     private static final long MINUTE_MS = 60_000;
     /** Between going HOME (so players stop) and sleeping. */
     private static final long SLEEP_AFTER_HOME_MS = 1500;
+    /** Play/pause held this long toggles the visualizer. */
+    private static final long VISUALIZER_HOLD_MS = 1000;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable holdReached = () -> { holdFired = true; showMenu(); };
     private final Runnable singlePress = this::onSinglePress;
+    private final Runnable visualizerHoldReached = () -> { visualizerHoldFired = true; this.visualizer.toggle(); };
     private final ExecutorService calls = Executors.newSingleThreadExecutor();
     private WindowManager wm;
     private View panel;
     private CameraOverlay cameras;
+    private VisualizerOverlay visualizer;
     private LightPanel lights;
     private RadarOverlay radar;
     private AlertBanner alerts;
@@ -104,12 +110,16 @@ public class QuickMenuService extends AccessibilityService {
     private boolean secondPress;     // this press is the second of a double press
     private boolean swallowRelease;  // this press only closed an overlay
     private boolean swallowBack;     // this Back only closed the radar
+    // Play/pause: down until up, whatever the setting does meanwhile, so the app never sees half a press.
+    private boolean playPauseDown;
+    private boolean visualizerHoldFired;
 
     @Override
     protected void onServiceConnected() {
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         store = new Store(this);
         cameras = new CameraOverlay(this, wm, store);
+        visualizer = new VisualizerOverlay(this, wm, store);
         lights = new LightPanel(this, wm, store);
         radar = new RadarOverlay(this, wm, store);
         radar.start();
@@ -119,7 +129,7 @@ public class QuickMenuService extends AccessibilityService {
         reminders.start();
         web = new WebConfigServer(this, store, () -> handler.post(radar::force),
                 () -> handler.post(alerts::test), () -> handler.post(reminders::test),
-                () -> handler.post(reminders::testDigest));
+                () -> handler.post(reminders::testDigest), (playlist, preset) -> handler.post(() -> visualizer.show(playlist, preset)));
         web.start();
         registerReceiver(screenOff, new IntentFilter(Intent.ACTION_SCREEN_OFF));
     }
@@ -127,6 +137,10 @@ public class QuickMenuService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) return onBack(event);
+        if (event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                && (playPauseDown || store.visualizerHold())) {
+            return onPlayPause(event);
+        }
         if (event.getKeyCode() != NETFLIX_KEY) {
             // The full-screen radar has no focus (so playback carries on under
             // it); the app underneath must not act on keys meant for the radar.
@@ -134,11 +148,12 @@ public class QuickMenuService extends AccessibilityService {
         }
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (event.getRepeatCount() > 0) return true;
-            if (panel != null || cameras.isShowing() || alerts.isShowing() || reminders.isShowing()
-                    || radar.isShowing()) {
-                if (panel != null || cameras.isShowing()) {
+            if (panel != null || cameras.isShowing() || visualizer.isShowing() || alerts.isShowing()
+                    || reminders.isShowing() || radar.isShowing()) {
+                if (panel != null || cameras.isShowing() || visualizer.isShowing()) {
                     hideMenu();
                     cameras.hide();
+                    visualizer.hide();
                 } else if (reminders.isShowing()) {
                     reminders.dismiss();
                 } else if (alerts.isShowing()) {
@@ -187,7 +202,7 @@ public class QuickMenuService extends AccessibilityService {
             return true;
         }
         if (event.getAction() != KeyEvent.ACTION_DOWN || panel != null || cameras.isShowing()
-                || lights.isShowing()) {
+                || lights.isShowing() || visualizer.isShowing()) {
             return false;
         }
         if (reminders.isShowing()) {
@@ -207,6 +222,33 @@ public class QuickMenuService extends AccessibilityService {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Held: the visualizer, on or off. Released sooner: an ordinary play/pause,
+     * sent on through the media session. That reaches every player with one
+     * (all the music and video apps here), but not one that only reads keys
+     * in its own window; the config page can switch the hold off.
+     */
+    private boolean onPlayPause(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) {
+                playPauseDown = true;
+                visualizerHoldFired = false;
+                handler.postDelayed(visualizerHoldReached, VISUALIZER_HOLD_MS);
+            }
+        } else if (event.getAction() == KeyEvent.ACTION_UP) {
+            handler.removeCallbacks(visualizerHoldReached);
+            playPauseDown = false;
+            if (!visualizerHoldFired) sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+        }
+        return true;
+    }
+
+    private void sendMediaKey(int key) {
+        AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, key));
+        audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, key));
     }
 
     /** Volume and playback still reach the app while the radar fills the screen. */
@@ -243,10 +285,12 @@ public class QuickMenuService extends AccessibilityService {
     public void onDestroy() {
         handler.removeCallbacks(holdReached);
         handler.removeCallbacks(singlePress);
+        handler.removeCallbacks(visualizerHoldReached);
         cancelSleep();
         try { unregisterReceiver(screenOff); } catch (IllegalArgumentException ignored) { }
         hideMenu();
         if (cameras != null) cameras.shutdown();
+        if (visualizer != null) visualizer.shutdown();
         if (lights != null) lights.shutdown();
         if (radar != null) radar.shutdown();
         if (alerts != null) alerts.shutdown();
@@ -436,11 +480,9 @@ public class QuickMenuService extends AccessibilityService {
         sleepAt = 0;
         hideMenu();
         cameras.hide();
-        AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
-        for (int key : new int[] { KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP }) {
-            audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, key));
-            audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, key));
-        }
+        visualizer.hide();
+        sendMediaKey(KeyEvent.KEYCODE_MEDIA_PAUSE);
+        sendMediaKey(KeyEvent.KEYCODE_MEDIA_STOP);
         // Players that ignore media keys still stop when they leave the screen.
         performGlobalAction(GLOBAL_ACTION_HOME);
         // On API 28+ this puts the device to sleep, not just behind a keyguard.
