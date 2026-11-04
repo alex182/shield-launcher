@@ -11,7 +11,7 @@
     <string name="hide">Hide</string>
     <string name="quick_actions">Quick actions</string>
     <string name="dream_name">Flint Hills</string>
-    <string name="quick_actions_description">Netflix button: press to open your chosen app, double-press for cameras, hold for quick actions.</string>
+    <string name="quick_actions_description">Netflix button: press to open your chosen app, double-press for cameras, hold for quick actions. Hold play/pause for the music visualizer.</string>
     <string name="action_placeholder">%s: no Home Assistant service set</string>
     <string name="action_failed">%1$s failed: %2$s</string>
     <string name="cannot_launch">Cannot launch %s</string>
@@ -45,4 +45,7 @@
     <string name="digest_heading">Tomorrow · %s</string>
     <string name="digest_nothing">Nothing on the calendar</string>
     <string name="digest_more">+%d more</string>
+    <string name="visualizer_no_audio">No sound to draw: the launcher needs the record-audio permission (adb shell pm grant dev.alex.minlauncher android.permission.RECORD_AUDIO)</string>
+    <string name="visualizer_no_mic">No microphone to listen to</string>
+    <string name="visualizer_no_dump">Can\'t tell which app is playing: the launcher needs the dump permission (adb shell pm grant dev.alex.minlauncher android.permission.DUMP)</string>
 </resources>

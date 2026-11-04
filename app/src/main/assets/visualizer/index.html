@@ -1,0 +1,191 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #label {
+    position: fixed; left: 48px; bottom: 40px; max-width: 70vw;
+    font: 15px sans-serif; color: #e8e8e8; text-shadow: 0 0 6px #000, 0 0 2px #000;
+    opacity: 0; transition: opacity 0.6s;
+  }
+  #label.on { opacity: 1; }
+  #label small { display: block; color: #9a9a9a; font-size: 12px; margin-top: 4px; }
+  #note {
+    position: fixed; right: 48px; bottom: 40px; max-width: 40vw; text-align: right;
+    font: 13px sans-serif; color: #9a9a9a; text-shadow: 0 0 6px #000;
+  }
+  #error {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    font: 18px sans-serif; color: #9a9a9a; text-align: center; padding: 0 15vw;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="label"></div>
+<div id="note"></div>
+<div id="error"></div>
+<script src="butterchurn.min.js"></script>
+<script src="butterchurnPresets.min.js"></script>
+<script>
+// Milkdrop presets (butterchurn) driven by the SHIELD's audio. There is no
+// WebAudio source here: `shield` (VisualizerOverlay.Bridge) hands over the
+// latest 1024-sample waveform each frame, which butterchurn takes in place
+// of an AnalyserNode's. Settings (Store.visualizer(), edited on the config
+// page) are re-read every second and apply as they change. With the
+// playlist on "liked", the timer and the arrows keep to the liked presets.
+'use strict';
+const SAMPLES = 1024;
+
+const canvas = document.getElementById('canvas');
+const label = document.getElementById('label');
+const note = document.getElementById('note');
+let viz, names, presets, current = '', held = false, nextAt = 0, labelTimer = 0;
+let cfg = {}, lastFrame = 0, lastCheck = 0;
+const wave = new Uint8Array(SAMPLES).fill(128);
+const levels = { timeByteArray: wave, timeByteArrayL: wave, timeByteArrayR: wave };
+
+function fail(text) {
+  const e = document.getElementById('error');
+  e.textContent = text;
+  e.style.display = 'flex';
+}
+
+function liked() { return (cfg.liked || []).filter(n => presets[n]); }
+
+/** What the timer and the arrows choose from: the liked presets, or all. */
+function pool() {
+  const l = cfg.playlist === 'liked' ? liked() : [];
+  return l.length ? l : names;
+}
+
+function showLabel() {
+  const isLiked = liked().includes(current);
+  label.textContent = (isLiked ? '♥ ' : '') + current;
+  const small = document.createElement('small');
+  small.textContent = (held ? 'Held · Select to cycle again' : '← → change · Select to hold this one') +
+      (isLiked ? ' · ↑ unlike' : ' · ↑ like') +
+      (cfg.playlist === 'liked' && liked().length ? ' · Playing liked' : '');
+  label.appendChild(small);
+  label.classList.add('on');
+  clearTimeout(labelTimer);
+  labelTimer = setTimeout(() => label.classList.remove('on'), 4000);
+}
+
+function load(name, blend) {
+  current = name;
+  viz.loadPreset(presets[name], blend);
+  nextAt = performance.now() + cfg.cycleSeconds * 1000;
+  shield.showing(name);
+}
+
+/** The preset `step` along the pool from this one; off the pool, its first. */
+function step(by) {
+  const p = pool(), i = p.indexOf(current);
+  return i < 0 ? p[0] : p[(i + by + p.length) % p.length];
+}
+
+function random() {
+  const p = pool();
+  let n;
+  do { n = p[Math.floor(Math.random() * p.length)]; } while (p.length > 1 && n === current);
+  return n;
+}
+
+/** The drawing size: a share of the screen's own pixels, and the mesh. */
+function size() {
+  const w = Math.round(window.innerWidth * window.devicePixelRatio * cfg.canvasSize);
+  const h = Math.round(window.innerHeight * window.devicePixelRatio * cfg.canvasSize);
+  return { w, h, mesh: { meshWidth: Math.round(cfg.meshSize * 4 / 3), meshHeight: cfg.meshSize } };
+}
+
+function applySettings(next) {
+  const old = cfg;
+  cfg = next;
+  if (!viz) return;
+  if (old.canvasSize !== cfg.canvasSize || old.meshSize !== cfg.meshSize) {
+    const s = size();
+    canvas.width = s.w;
+    canvas.height = s.h;
+    viz.setRendererSize(s.w, s.h, s.mesh);
+  }
+  // A preset picked on the config page while this shows, or played from it.
+  if (cfg.play && cfg.playSeq !== old.playSeq && presets[cfg.play]) {
+    load(cfg.play, cfg.userBlend);
+    showLabel();
+  } else if (cfg.preset && cfg.preset !== old.preset && presets[cfg.preset]) {
+    load(cfg.preset, cfg.userBlend);
+    showLabel();
+  } else if (cfg.playlist !== old.playlist && !pool().includes(current)) {
+    load(random(), cfg.userBlend);
+    showLabel();
+  }
+  if (old.cycleSeconds !== cfg.cycleSeconds) nextAt = performance.now() + cfg.cycleSeconds * 1000;
+}
+
+// Called by VisualizerOverlay for the remote's keys. Not `viz`: the
+// top-level `let viz` (the renderer) would shadow it in evaluateJavascript.
+window.remote = {
+  next() { load(step(1), cfg.userBlend); showLabel(); },
+  prev() { load(step(-1), cfg.userBlend); showLabel(); },
+  random() { load(random(), cfg.userBlend); showLabel(); },
+  like() {
+    const now = !liked().includes(current);
+    shield.like(current, now);
+    cfg.liked = now ? liked().concat(current) : liked().filter(n => n !== current);
+    showLabel();
+  },
+  hold() {
+    held = !held;
+    nextAt = performance.now() + cfg.cycleSeconds * 1000;
+    showLabel();
+  },
+};
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (now - lastCheck >= 1000) {
+    lastCheck = now;
+    applySettings(JSON.parse(shield.settings()));
+    note.textContent = shield.note();
+  }
+  // A small allowance, so a 60 Hz display still draws every frame at 60.
+  if (cfg.frameLimit && now - lastFrame < 1000 / cfg.frameLimit - 2) return;
+  lastFrame = now;
+  const b64 = shield.wave();
+  if (b64) {
+    const s = atob(b64);
+    for (let i = 0; i < SAMPLES && i < s.length; i++) wave[i] = s.charCodeAt(i);
+  } else {
+    wave.fill(128);
+  }
+  if (cfg.cycle && !held && now >= nextAt) {
+    load(cfg.randomize ? random() : step(1), cfg.autoBlend);
+  }
+  viz.render({ audioLevels: levels });
+}
+
+try {
+  if (!document.createElement('canvas').getContext('webgl2')) throw new Error('no WebGL 2');
+  cfg = JSON.parse(shield.settings());
+  const s = size();
+  canvas.width = s.w;
+  canvas.height = s.h;
+  viz = butterchurn.default.createVisualizer(null, canvas,
+      Object.assign({ width: s.w, height: s.h, pixelRatio: 1, textureRatio: 1 }, s.mesh));
+  const pack = window.butterchurnPresets.default || window.butterchurnPresets;
+  presets = pack.getPresets();
+  names = Object.keys(presets);
+  const first = [cfg.play, cfg.preset].find(n => n && presets[n] && (n === cfg.play || pool().includes(n)));
+  load(first || random(), 0);
+  showLabel();
+  requestAnimationFrame(frame);
+} catch (e) {
+  fail('The visualizer could not start: ' + e.message);
+}
+</script>
+</body>
+</html>

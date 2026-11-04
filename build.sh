@@ -37,6 +37,10 @@ if [ "${1:-}" = "install" ]; then
                 *) adb -s "$d" shell settings put secure enabled_accessibility_services "$cur:$svc" </dev/null ;;
             esac
             adb -s "$d" shell settings put secure accessibility_enabled 1 </dev/null
+            # The music visualizer: finding the playing app's audio session (DUMP)
+            # and capturing it (RECORD_AUDIO).
+            adb -s "$d" shell pm grant dev.alex.minlauncher android.permission.RECORD_AUDIO </dev/null
+            adb -s "$d" shell pm grant dev.alex.minlauncher android.permission.DUMP </dev/null
             # Doze otherwise firewalls the config page while the SHIELD sleeps.
             adb -s "$d" shell dumpsys deviceidle whitelist +dev.alex.minlauncher </dev/null >/dev/null
             adb -s "$d" shell input keyevent KEYCODE_HOME </dev/null

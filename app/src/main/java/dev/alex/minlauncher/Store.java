@@ -48,6 +48,11 @@ final class Store {
     static final String KEY_CAMERAS = "cameras";               // comma-joined entity ids
     static final String KEY_SLEEP_MINUTES = "sleep_minutes";   // sleep timer length
     static final String KEY_SLEEP_SHOWN = "sleep_shown";       // Sleep row at the bottom of quick actions
+    static final String KEY_VISUALIZER_HOLD = "visualizer_hold";   // hold play/pause for the music visualizer
+    static final String KEY_VISUALIZER = "visualizer";         // JSON, see visualizer()
+    static final String KEY_VISUALIZER_STATUS = "visualizer_status";   // JSON: what it listens to, written by VisualizerOverlay
+    static final String KEY_VISUALIZER_LIKED = "visualizer_liked";     // JSON array of preset names, liked on the TV or the page
+    static final String KEY_VISUALIZER_SHOWING = "visualizer_showing"; // the preset on screen now, "" when closed
     static final String KEY_RADAR_SHOWN = "radar_shown";       // radar pop-up while it rains
     static final String KEY_RADAR_SOURCE = "radar_source";     // image URL or camera entity
     static final String KEY_RADAR_LIGHTNING_DISTANCE = "radar_lightning_distance";   // entity ids, "" = off
@@ -100,6 +105,14 @@ final class Store {
     static final int DEFAULT_CONTENT_WIDTH = 65;
 
     static final long DEFAULT_HOLD_MS = 3000;
+    /** Where the visualizer's sound comes from. */
+    static final List<String> VISUALIZER_SOURCES = Arrays.asList("auto", "app", "mix", "mic");
+    /** Which presets it cycles through: every one, or only the liked ones. */
+    static final List<String> VISUALIZER_PLAYLISTS = Arrays.asList("all", "liked");
+    /** butterchurnviz.com's own choices; 0 frames = no limit. Canvas sizes past native are left out. */
+    static final List<Integer> VISUALIZER_FRAME_LIMITS = Arrays.asList(15, 30, 45, 60, 0);
+    static final List<Double> VISUALIZER_CANVAS_SIZES = Arrays.asList(0.25, 0.5, 0.67, 1.0);
+    static final List<Integer> VISUALIZER_MESH_SIZES = Arrays.asList(18, 24, 36, 48, 72, 96);
     static final int DEFAULT_SLEEP_MINUTES = 90;
     static final int MAX_SLEEP_MINUTES = 600;
     /** What Button Mapper did with the Netflix button before this took it over. */
@@ -193,6 +206,88 @@ final class Store {
 
     String singlePress() { return prefs.getString(KEY_SINGLE_PRESS, DEFAULT_SINGLE_PRESS); }
     void setSinglePress(String pkg) { prefs.edit().putString(KEY_SINGLE_PRESS, pkg).apply(); }
+
+    boolean visualizerHold() { return prefs.getBoolean(KEY_VISUALIZER_HOLD, true); }
+
+    /**
+     * The visualizer's settings, every field filled in. Modelled on
+     * butterchurnviz.com's, with its defaults, except the canvas: 0.67 of
+     * native (720p) keeps the Tegra's frame rate up.
+     * <ul>
+     *   <li>{@code source}: "auto" (whichever app is playing), "app" (only
+     *       {@code app}, a package), "mix" (session 0) or "mic";</li>
+     *   <li>{@code preset}: a preset name to show, "" for a random one;</li>
+     *   <li>{@code playlist}: "all" presets, or only the "liked" ones
+     *       ({@link #visualizerLiked()});</li>
+     *   <li>{@code cycle}, {@code cycleSeconds}, {@code randomize}: change preset
+     *       on a timer, to a random one or the next;</li>
+     *   <li>{@code autoBlend}, {@code userBlend}: seconds to blend into a preset
+     *       picked by the timer, or by the remote or this page;</li>
+     *   <li>{@code frameLimit}, {@code canvasSize}, {@code meshSize}: frames a
+     *       second (0 = no limit), drawing size as a share of the screen's,
+     *       and mesh rows (the columns are 4/3 of them).</li>
+     * </ul>
+     */
+    JSONObject visualizer() {
+        JSONObject in;
+        try { in = new JSONObject(prefs.getString(KEY_VISUALIZER, "{}")); }
+        catch (JSONException e) { in = new JSONObject(); }
+        try {
+            String source = in.optString("source", "auto");
+            String playlist = in.optString("playlist", "all");
+            int frames = in.optInt("frameLimit", 30);
+            double canvas = in.optDouble("canvasSize", 0.67);
+            int mesh = in.optInt("meshSize", 36);
+            return new JSONObject()
+                    .put("source", VISUALIZER_SOURCES.contains(source) ? source : "auto")
+                    .put("app", in.optString("app", ""))
+                    .put("preset", in.optString("preset", ""))
+                    .put("playlist", VISUALIZER_PLAYLISTS.contains(playlist) ? playlist : "all")
+                    .put("cycle", in.optBoolean("cycle", true))
+                    .put("cycleSeconds", clamp(in.optInt("cycleSeconds", 25), 1, 3600))
+                    .put("randomize", in.optBoolean("randomize", true))
+                    .put("autoBlend", Math.max(0, Math.min(60, in.optDouble("autoBlend", 2.7))))
+                    .put("userBlend", Math.max(0, Math.min(60, in.optDouble("userBlend", 5.7))))
+                    .put("frameLimit", VISUALIZER_FRAME_LIMITS.contains(frames) ? frames : 30)
+                    .put("canvasSize", VISUALIZER_CANVAS_SIZES.contains(canvas) ? canvas : 0.67)
+                    .put("meshSize", VISUALIZER_MESH_SIZES.contains(mesh) ? mesh : 36);
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);   // only put() of finite values above
+        }
+    }
+
+    /** Anything left out or out of range falls back to its default when read. */
+    void setVisualizer(boolean hold, JSONObject settings) {
+        prefs.edit().putBoolean(KEY_VISUALIZER_HOLD, hold)
+                .putString(KEY_VISUALIZER, settings.toString()).apply();
+    }
+
+    String visualizerStatus() { return prefs.getString(KEY_VISUALIZER_STATUS, "{}"); }
+    void setVisualizerStatus(String json) { prefs.edit().putString(KEY_VISUALIZER_STATUS, json).apply(); }
+
+    /**
+     * Liked preset names, oldest first. Kept apart from {@link #visualizer()},
+     * so saving the config page doesn't undo a like made on the TV meanwhile.
+     */
+    JSONArray visualizerLiked() {
+        try { return new JSONArray(prefs.getString(KEY_VISUALIZER_LIKED, "[]")); }
+        catch (JSONException e) { return new JSONArray(); }
+    }
+
+    /** Likes or unlikes a preset; the TV and the page can both call this at once. */
+    synchronized void setVisualizerLiked(String preset, boolean liked) {
+        JSONArray old = visualizerLiked(), out = new JSONArray();
+        for (int i = 0; i < old.length(); i++) {
+            if (!old.optString(i).equals(preset)) out.put(old.optString(i));
+        }
+        if (liked) out.put(preset);
+        prefs.edit().putString(KEY_VISUALIZER_LIKED, out.toString()).apply();
+    }
+
+    String visualizerShowing() { return prefs.getString(KEY_VISUALIZER_SHOWING, ""); }
+    void setVisualizerShowing(String preset) { prefs.edit().putString(KEY_VISUALIZER_SHOWING, preset).apply(); }
+
+    private static int clamp(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
 
     boolean radarShown() { return prefs.getBoolean(KEY_RADAR_SHOWN, true); }
     String radarSource() { return prefs.getString(KEY_RADAR_SOURCE, DEFAULT_RADAR); }
