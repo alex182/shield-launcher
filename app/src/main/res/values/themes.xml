@@ -7,4 +7,9 @@
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:textColorPrimary">@color/fg</item>
     </style>
+
+    <!-- AmbilightActivity: nothing drawn, no animation, gone at once. -->
+    <style name="Invisible" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

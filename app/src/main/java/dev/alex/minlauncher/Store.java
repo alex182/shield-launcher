@@ -53,6 +53,7 @@ final class Store {
     static final String KEY_VISUALIZER_STATUS = "visualizer_status";   // JSON: what it listens to, written by VisualizerOverlay
     static final String KEY_VISUALIZER_LIKED = "visualizer_liked";     // JSON array of preset names, liked on the TV or the page
     static final String KEY_VISUALIZER_SHOWING = "visualizer_showing"; // the preset on screen now, "" when closed
+    static final String KEY_AMBILIGHT = "ambilight";           // JSON, see AmbilightConfig
     static final String KEY_RADAR_SHOWN = "radar_shown";       // radar pop-up while it rains
     static final String KEY_RADAR_SOURCE = "radar_source";     // image URL or camera entity
     static final String KEY_RADAR_LIGHTNING_DISTANCE = "radar_lightning_distance";   // entity ids, "" = off
@@ -288,6 +289,16 @@ final class Store {
     void setVisualizerShowing(String preset) { prefs.edit().putString(KEY_VISUALIZER_SHOWING, preset).apply(); }
 
     private static int clamp(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    /** The ambilight's room, TV, strips and tuning, every field filled in; see {@link AmbilightConfig}. */
+    JSONObject ambilight() {
+        try { return AmbilightConfig.normalize(new JSONObject(prefs.getString(KEY_AMBILIGHT, "{}"))); }
+        catch (JSONException e) { return AmbilightConfig.normalize(null); }
+    }
+
+    void setAmbilight(JSONObject settings) {
+        prefs.edit().putString(KEY_AMBILIGHT, AmbilightConfig.normalize(settings).toString()).apply();
+    }
 
     boolean radarShown() { return prefs.getBoolean(KEY_RADAR_SHOWN, true); }
     String radarSource() { return prefs.getString(KEY_RADAR_SOURCE, DEFAULT_RADAR); }

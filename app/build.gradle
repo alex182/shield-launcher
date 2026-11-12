@@ -70,4 +70,6 @@ tasks.named("preBuild") { dependsOn syncBackgrounds }
 // Unit tests only (Backgrounds' pure logic, run on the JVM); nothing ships in the APK.
 dependencies {
     testImplementation "junit:junit:4.13.2"
+    // Android's own org.json is a stub on the JVM; the real one for Backup's tests.
+    testImplementation "org.json:json:20240303"
 }
