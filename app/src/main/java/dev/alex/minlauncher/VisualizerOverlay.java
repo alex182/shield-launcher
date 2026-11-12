@@ -147,6 +147,7 @@ final class VisualizerOverlay {
         }
         if (root != null) return;
         showing = true;
+        ModeLightsController.get(context).set(ModeLights.VISUALIZER, true);
         note = "";
         follow.run();
 
@@ -182,6 +183,7 @@ final class VisualizerOverlay {
 
     void hide() {
         if (root == null) return;
+        ModeLightsController.get(context).set(ModeLights.VISUALIZER, false);
         try { context.unregisterReceiver(screenOff); } catch (IllegalArgumentException ignored) { }
         wm.removeView(root);
         web.destroy();

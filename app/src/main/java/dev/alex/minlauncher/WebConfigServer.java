@@ -44,6 +44,11 @@ final class WebConfigServer implements Runnable {
 
     /** {@link VisualizerOverlay#show(String, String)}, on the main thread. */
     interface ShowVisualizer { void show(String playlist, String preset); }
+    /** What the TV shows as a PNG, from the accessibility service; blocking. */
+    interface Screenshots { byte[] png() throws IOException; }
+    private volatile Screenshots screenshots;
+    void setScreenshots(Screenshots s) { screenshots = s; }
+
     private ServerSocket server;
     private Thread thread;
 
@@ -129,6 +134,14 @@ final class WebConfigServer implements Runnable {
                 // The page lists preset names from the same bundle the TV draws.
                 send(client, 200, "text/javascript; charset=utf-8",
                         asset("visualizer/butterchurnPresets.min.js"), true);
+            } else if (method.equals("GET") && path.equals("/api/screenshot")) {
+                Screenshots s = screenshots;
+                try {
+                    if (s == null) throw new IOException("Screenshots aren't available");
+                    send(client, 200, "image/png", s.png(), false);
+                } catch (IOException e) {
+                    send(client, 503, "application/json", new JSONObject().put("error", e.getMessage()).toString());
+                }
             } else if (method.equals("GET") && path.equals("/api/visualizer")) {
                 send(client, 200, "application/json", visualizerNow().toString());
             } else if (method.equals("POST") && path.equals("/api/visualizer/show")) {
@@ -356,6 +369,8 @@ final class WebConfigServer implements Runnable {
                 .put("alertsSeverities", new JSONArray(Alerts.SEVERITIES))
                 .put("alertsStatus", new JSONObject(store.alertsStatus()))
                 .put("ambilight", store.ambilight())
+                .put("modeLights", store.modeLights())
+                .put("modeLightsStatus", store.modeLightsStatus())
                 .put("backupGroups", Backup.groupsJson())
                 .put("restoreUndo", undoInfo())
                 .put("haUrl", store.haUrl())
@@ -461,6 +476,7 @@ final class WebConfigServer implements Runnable {
             store.setVisualizer(o.getBoolean("visualizerHold"), v == null ? store.visualizer() : v);
         }
         if (o.has("ambilight")) store.setAmbilight(o.getJSONObject("ambilight"));
+        if (o.has("modeLights")) store.setModeLights(o.getJSONObject("modeLights"));
         if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
         if (o.has("alertsShown")) {
             store.setAlerts(o.getBoolean("alertsShown"), o.optString("alertsSeverity"),
