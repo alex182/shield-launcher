@@ -107,6 +107,12 @@ public class AmbilightService extends Service {
         }
     };
     private final Runnable endTest = this::endTest;
+    /** A save on the config page applies straight away while following the screen (a test keeps its own settings). */
+    private final android.content.SharedPreferences.OnSharedPreferenceChangeListener settingsSaved = (prefs, key) -> {
+        if (!Store.KEY_AMBILIGHT.equals(key) || !wantCapture) return;
+        JSONObject c = store.ambilight();
+        worker.post(() -> { if (AmbilightService.this.mode == Mode.CAPTURE) configure(c); });
+    };
     /** The latest start; a shutdown only stops the service if nothing came in after it. */
     private int lastStartId;
 
@@ -140,6 +146,9 @@ public class AmbilightService extends Service {
     private int[][][] boxes;           // per strip, per LED
     private int[] cropBoxed;           // the crop the boxes were made for
     private Ambilight.AutoEdge autoEdge;   // null when the depth and skip are as set
+    private boolean vivid;              // each LED's most vivid colour, not its patch's mean
+    private byte[] hueBin, chromaOf;    // per capture pixel, for vivid
+    private final double[] vividScratch = new double[Ambilight.HUE_BINS * 4];
     private long lastFrameAt;
     private volatile int edgeDepthNow, edgeInsetNow;   // what the boxes use, for the page
     private long blackSince;
@@ -210,6 +219,7 @@ public class AmbilightService extends Service {
         IntentFilter f = new IntentFilter(Intent.ACTION_SCREEN_OFF);
         f.addAction(Intent.ACTION_SCREEN_ON);
         registerReceiver(screen, f);
+        store.prefs().registerOnSharedPreferenceChangeListener(settingsSaved);
         instance = this;
     }
 
@@ -339,6 +349,7 @@ public class AmbilightService extends Service {
     public void onDestroy() {
         instance = null;
         try { unregisterReceiver(screen); } catch (IllegalArgumentException ignored) { }
+        store.prefs().unregisterOnSharedPreferenceChangeListener(settingsSaved);
         main.removeCallbacks(endTest);
         worker.post(() -> {
             stopCapture(false);
@@ -418,6 +429,7 @@ public class AmbilightService extends Service {
         stripErrors = errors;
         boxes = null;
         cropBoxed = null;
+        vivid = !"mean".equals(config.optString("colourFrom"));
         autoEdge = config.optBoolean("autoEdge") ? new Ambilight.AutoEdge(tuning.edgeDepth, tuning.edgeInset) : null;
         edgeDepthNow = autoEdge != null ? autoEdge.depth() : tuning.edgeDepth;
         edgeInsetNow = autoEdge != null ? autoEdge.inset() : tuning.edgeInset;
@@ -537,12 +549,18 @@ public class AmbilightService extends Service {
         }
         float[] avg = new float[3], edge = new float[3], col = new float[3];
         Ambilight.average(sumR, sumG, sumB, cw, c, avg);
+        if (vivid) {
+            if (hueBin == null || hueBin.length != cw * ch) { hueBin = new byte[cw * ch]; chromaOf = new byte[cw * ch]; }
+            Ambilight.vivid(frame, cw, ch, stride, hueBin, chromaOf);
+        }
         average = (Math.round(avg[0]) << 16) | (Math.round(avg[1]) << 8) | Math.round(avg[2]);
         for (int s = 0; s < map.size(); s++) {
             double[][] m = map.get(s);
             float[] t = target[s];
             for (int i = 0; i < m.length; i++) {
-                Ambilight.average(sumR, sumG, sumB, cw, boxes[s][i], edge);
+                if (!vivid || !Ambilight.dominant(frame, cw, stride, hueBin, chromaOf, boxes[s][i], vividScratch, edge)) {
+                    Ambilight.average(sumR, sumG, sumB, cw, boxes[s][i], edge);
+                }
                 Ambilight.colour(edge, avg, m[i][2], tuning, col);
                 t[i * 3] = col[0]; t[i * 3 + 1] = col[1]; t[i * 3 + 2] = col[2];
             }
