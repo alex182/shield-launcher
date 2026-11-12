@@ -44,8 +44,8 @@ final class WebConfigServer implements Runnable {
 
     /** {@link VisualizerOverlay#show(String, String)}, on the main thread. */
     interface ShowVisualizer { void show(String playlist, String preset); }
-    /** What the TV shows as a PNG, from the accessibility service; blocking. */
-    interface Screenshots { byte[] png() throws IOException; }
+    /** What the TV shows, from the accessibility service: a full PNG, or a small JPEG when live; blocking. */
+    interface Screenshots { byte[] take(boolean live) throws IOException; }
     private volatile Screenshots screenshots;
     void setScreenshots(Screenshots s) { screenshots = s; }
 
@@ -134,11 +134,12 @@ final class WebConfigServer implements Runnable {
                 // The page lists preset names from the same bundle the TV draws.
                 send(client, 200, "text/javascript; charset=utf-8",
                         asset("visualizer/butterchurnPresets.min.js"), true);
-            } else if (method.equals("GET") && path.equals("/api/screenshot")) {
+            } else if (method.equals("GET") && (path.equals("/api/screenshot") || path.equals("/api/screenshot/live"))) {
                 Screenshots s = screenshots;
+                boolean live = path.endsWith("/live");
                 try {
                     if (s == null) throw new IOException("Screenshots aren't available");
-                    send(client, 200, "image/png", s.png(), false);
+                    send(client, 200, live ? "image/jpeg" : "image/png", s.take(live), false);
                 } catch (IOException e) {
                     send(client, 503, "application/json", new JSONObject().put("error", e.getMessage()).toString());
                 }
@@ -371,6 +372,9 @@ final class WebConfigServer implements Runnable {
                 .put("ambilight", store.ambilight())
                 .put("modeLights", store.modeLights())
                 .put("modeLightsStatus", store.modeLightsStatus())
+                .put("haReport", store.haReport())
+                .put("haReportStatus", store.haReportStatus())
+                .put("haReportDefault", TvState.defaultEntity(name))
                 .put("backupGroups", Backup.groupsJson())
                 .put("restoreUndo", undoInfo())
                 .put("haUrl", store.haUrl())
@@ -451,6 +455,11 @@ final class WebConfigServer implements Runnable {
             List<String> errors = Backgrounds.parseHolidays(bg.getString("holidays")).errors;
             if (!errors.isEmpty()) throw new JSONException("Holidays: " + errors.get(0));
         }
+        JSONObject report = o.optJSONObject("haReport");
+        String sensor = report == null ? "" : report.optString("entity", "").trim();
+        if (!sensor.isEmpty() && !TvState.validEntity(sensor)) {
+            throw new JSONException("Sensor must look like sensor.office_shield (lowercase letters, digits and _)");
+        }
         if (o.has("pinned")) store.setPinned(strings(o.getJSONArray("pinned")));
         if (o.has("hidden")) store.setHidden(new HashSet<>(strings(o.getJSONArray("hidden"))));
         if (o.has("actions")) {
@@ -477,6 +486,7 @@ final class WebConfigServer implements Runnable {
         }
         if (o.has("ambilight")) store.setAmbilight(o.getJSONObject("ambilight"));
         if (o.has("modeLights")) store.setModeLights(o.getJSONObject("modeLights"));
+        if (o.has("haReport")) store.setHaReport(o.getJSONObject("haReport"));
         if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
         if (o.has("alertsShown")) {
             store.setAlerts(o.getBoolean("alertsShown"), o.optString("alertsSeverity"),

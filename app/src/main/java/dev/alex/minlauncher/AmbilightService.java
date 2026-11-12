@@ -139,6 +139,9 @@ public class AmbilightService extends Service {
     private volatile int[] crop;
     private int[][][] boxes;           // per strip, per LED
     private int[] cropBoxed;           // the crop the boxes were made for
+    private Ambilight.AutoEdge autoEdge;   // null when the depth and skip are as set
+    private long lastFrameAt;
+    private volatile int edgeDepthNow, edgeInsetNow;   // what the boxes use, for the page
     private long blackSince;
     private volatile boolean black;
     private volatile int fps;           // frames captured in the last second (only changes make frames)
@@ -415,6 +418,10 @@ public class AmbilightService extends Service {
         stripErrors = errors;
         boxes = null;
         cropBoxed = null;
+        autoEdge = config.optBoolean("autoEdge") ? new Ambilight.AutoEdge(tuning.edgeDepth, tuning.edgeInset) : null;
+        edgeDepthNow = autoEdge != null ? autoEdge.depth() : tuning.edgeDepth;
+        edgeInsetNow = autoEdge != null ? autoEdge.inset() : tuning.edgeInset;
+        lastFrameAt = 0;
         if (socket == null) {
             try { socket = new DatagramSocket(); }
             catch (IOException e) { failed("No UDP socket: " + e.getMessage()); }
@@ -509,8 +516,17 @@ public class AmbilightService extends Service {
         }
         int[] c = config.optBoolean("blackBars", true) ? bars.update(found) : new int[] {0, 0, cw, ch};
         crop = c;
-        if (boxes == null || !java.util.Arrays.equals(c, cropBoxed)) {
-            double depth = tuning.edgeDepth / 100.0, inset = tuning.edgeInset / 100.0;
+        Ambilight.integrate(frame, cw, ch, stride, sumR, sumG, sumB);
+        boolean retune = false;
+        if (autoEdge != null) {
+            long dt = lastFrameAt == 0 ? 0 : now - lastFrameAt;
+            retune = autoEdge.update(sumR, sumG, sumB, cw, c, dt);
+            edgeDepthNow = autoEdge.depth();
+            edgeInsetNow = autoEdge.inset();
+        }
+        lastFrameAt = now;
+        if (retune || boxes == null || !java.util.Arrays.equals(c, cropBoxed)) {
+            double depth = edgeDepthNow / 100.0, inset = edgeInsetNow / 100.0;
             boxes = new int[map.size()][][];
             for (int s = 0; s < map.size(); s++) {
                 double[][] m = map.get(s);
@@ -519,7 +535,6 @@ public class AmbilightService extends Service {
             }
             cropBoxed = c;
         }
-        Ambilight.integrate(frame, cw, ch, stride, sumR, sumG, sumB);
         float[] avg = new float[3], edge = new float[3], col = new float[3];
         Ambilight.average(sumR, sumG, sumB, cw, c, avg);
         average = (Math.round(avg[0]) << 16) | (Math.round(avg[1]) << 8) | Math.round(avg[2]);
@@ -600,7 +615,9 @@ public class AmbilightService extends Service {
         if (s.mode == Mode.CAPTURE && c != null) {
             o.put("capture", new JSONObject().put("width", s.cw).put("height", s.ch).put("fps", s.fps)
                     .put("crop", new JSONArray().put(c[0]).put(c[1]).put(c[2]).put(c[3]))
-                    .put("black", s.black).put("average", AmbilightConfig.hex(s.average)));
+                    .put("black", s.black).put("average", AmbilightConfig.hex(s.average))
+                    .put("edge", new JSONObject().put("auto", s.autoEdge != null)
+                            .put("depth", s.edgeDepthNow).put("inset", s.edgeInsetNow)));
         }
         byte[][] out = s.out;
         String[] errors = s.stripErrors;

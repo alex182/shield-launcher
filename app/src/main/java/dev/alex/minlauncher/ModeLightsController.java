@@ -8,7 +8,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,10 +65,9 @@ final class ModeLightsController {
                         .put("snapshot_entities", new JSONArray().put(id)));
             }
             String action = cfg.optString("enter");
-            if (!action.equals("none")) {
-                call("homeassistant.turn_" + action, new JSONObject().put("entity_id", new JSONArray(lights)));
-            }
+            run(ModeLights.calls(action, lights, cfg.optInt("level"), cfg.optInt("transition")));
             status(mode, action.equals("none") ? "Started: lights left as they were"
+                    : action.equals("dim") ? "Started: dimmed " + count(lights.size()) + " to " + cfg.optInt("level") + "%"
                     : "Started: turned " + action + " " + count(lights.size()), "");
         } catch (IOException | JSONException e) {
             Log.w(TAG, mode + " start: " + e.getMessage());
@@ -90,18 +88,18 @@ final class ModeLightsController {
             return;
         }
         try {
-            if (action.equals("restore")) {
-                List<String> scenes = new ArrayList<>();
-                for (String id : released) scenes.add("scene." + ModeLights.sceneId(id));
-                call("scene.turn_on", new JSONObject().put("entity_id", new JSONArray(scenes)));
-                status(mode, "Ended: put back " + count(released.size()), "");
-            } else {
-                call("homeassistant.turn_" + action, new JSONObject().put("entity_id", new JSONArray(released)));
-                status(mode, "Ended: turned " + action + " " + count(released.size()), "");
-            }
-        } catch (IOException | JSONException e) {
+            run(ModeLights.calls(action, released, cfg.optInt("level"), cfg.optInt("transition")));
+            status(mode, action.equals("restore") ? "Ended: put back " + count(released.size())
+                    : "Ended: turned " + action + " " + count(released.size()), "");
+        } catch (IOException e) {
             Log.w(TAG, mode + " end: " + e.getMessage());
             status(mode, "Ended", e.getMessage());
+        }
+    }
+
+    private void run(List<ModeLights.Call> calls) throws IOException {
+        for (ModeLights.Call c : calls) {
+            HomeAssistant.call(store.haUrl(), store.haToken(), new Store.Action("", "", c.service, c.data));
         }
     }
 

@@ -80,8 +80,8 @@ final class Backup {
                     Store.KEY_BG_OVERRIDE, Type.STRING, Store.KEY_SCRIM_DAY, Type.INT,
                     Store.KEY_SCRIM_NIGHT, Type.INT, Store.KEY_SCRIM_END, Type.INT,
                     Store.KEY_CONTENT_WIDTH, Type.INT),
-            new Group("homeassistant", "Home Assistant address (not the token)",
-                    Store.KEY_HA_URL, Type.STRING));
+            new Group("homeassistant", "Home Assistant address and reporting (not the token)",
+                    Store.KEY_HA_URL, Type.STRING, Store.KEY_HA_REPORT, Type.STRING));
 
     /** In a restore's result: the setting goes back to its default. */
     static final Object REMOVE = new Object();

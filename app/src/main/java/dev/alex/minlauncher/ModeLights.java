@@ -15,26 +15,31 @@ import java.util.Set;
 
 /**
  * Pure logic behind {@link ModeLightsController}: the room's lights (Zigbee
- * or any other Home Assistant light or switch) turned off or on while the
- * visualizer or the ambilight runs, and put back afterwards. No Android
- * types, so it runs in unit tests.
+ * or any other Home Assistant light or switch) turned off, on or dimmed
+ * while the visualizer or the ambilight runs, or while chosen apps play, and
+ * put back afterwards. No Android types, so it runs in unit tests.
  *
  * Stored ({@link Store#KEY_MODE_LIGHTS}) as
  * <pre>
- * {visualizer: {lights: [entity ids], enter: "off"|"on"|"none", leave: "restore"|"on"|"off"|"none"},
- *  ambilight: {…}}
+ * {visualizer: {lights: [entity ids], enter: "off"|"on"|"dim"|"none", level: 1–100 (% for "dim"),
+ *               transition: seconds, leave: "restore"|"on"|"off"|"none"},
+ *  ambilight: {…},
+ *  playback: {…, apps: [package names]}}
  * </pre>
  */
 final class ModeLights {
 
     private ModeLights() { }
 
-    static final String VISUALIZER = "visualizer", AMBILIGHT = "ambilight";
-    static final List<String> MODES = Arrays.asList(VISUALIZER, AMBILIGHT);
-    /** What happens to the lights as a mode starts. */
-    static final List<String> ENTER = Arrays.asList("off", "on", "none");
+    static final String VISUALIZER = "visualizer", AMBILIGHT = "ambilight", PLAYBACK = "playback";
+    static final List<String> MODES = Arrays.asList(VISUALIZER, AMBILIGHT, PLAYBACK);
+    /** What happens to the lights as a mode starts; "dim" sets lights to {@code level}% and turns switches off. */
+    static final List<String> ENTER = Arrays.asList("off", "on", "dim", "none");
     /** And as it ends; "restore" brings back each light's state from just before. */
     static final List<String> LEAVE = Arrays.asList("restore", "on", "off", "none");
+    static final int DEFAULT_LEVEL = 20, DEFAULT_TRANSITION = 2, MAX_TRANSITION = 30;
+    /** The video apps watched by default. */
+    static final String DEFAULT_APP = "org.jellyfin.androidtv";
 
     /** Every mode filled in; only light and switch entities are kept, once each. */
     static JSONObject normalize(JSONObject in) {
@@ -51,10 +56,23 @@ final class ModeLights {
                     if (id.startsWith("light.") || id.startsWith("switch.")) ids.add(id);
                 }
                 String enter = m.optString("enter", "off"), leave = m.optString("leave", "restore");
-                out.put(mode, new JSONObject()
+                JSONObject o = new JSONObject()
                         .put("lights", new JSONArray(ids))
                         .put("enter", ENTER.contains(enter) ? enter : "off")
-                        .put("leave", LEAVE.contains(leave) ? leave : "restore"));
+                        .put("level", Math.max(1, Math.min(100, m.optInt("level", DEFAULT_LEVEL))))
+                        .put("transition", Math.max(0, Math.min(MAX_TRANSITION, m.optInt("transition", DEFAULT_TRANSITION))))
+                        .put("leave", LEAVE.contains(leave) ? leave : "restore");
+                if (mode.equals(PLAYBACK)) {
+                    Set<String> apps = new LinkedHashSet<>();
+                    JSONArray ap = m.optJSONArray("apps");
+                    if (ap == null) apps.add(DEFAULT_APP);
+                    for (int i = 0; ap != null && i < ap.length(); i++) {
+                        String pkg = ap.optString(i, "").trim();
+                        if (!pkg.isEmpty()) apps.add(pkg);
+                    }
+                    o.put("apps", new JSONArray(apps));
+                }
+                out.put(mode, o);
             }
             return out;
         } catch (JSONException e) {
@@ -62,11 +80,61 @@ final class ModeLights {
         }
     }
 
-    static List<String> lights(JSONObject mode) {
+    static List<String> lights(JSONObject mode) { return strings(mode, "lights"); }
+
+    static List<String> apps(JSONObject mode) { return strings(mode, "apps"); }
+
+    private static List<String> strings(JSONObject o, String key) {
         List<String> out = new ArrayList<>();
-        JSONArray a = mode == null ? null : mode.optJSONArray("lights");
+        JSONArray a = o == null ? null : o.optJSONArray(key);
         for (int i = 0; a != null && i < a.length(); i++) out.add(a.optString(i));
         return out;
+    }
+
+    /** One Home Assistant service call: "domain.service" and its JSON data. */
+    static final class Call {
+        final String service, data;
+        Call(String service, JSONObject data) { this.service = service; this.data = data.toString(); }
+        @Override public String toString() { return service + " " + data; }
+    }
+
+    /**
+     * The calls that switch these entities: "off", "on", "dim" (to
+     * {@code level}%), or "restore" (each one's scene, {@link #sceneId}).
+     * Lights fade over {@code transition} seconds; switches can't fade or
+     * dim, so they get their own calls (and "dim" turns them off).
+     */
+    static List<Call> calls(String action, List<String> entities, int level, int transition) {
+        List<Call> out = new ArrayList<>();
+        List<String> lights = new ArrayList<>(), switches = new ArrayList<>();
+        for (String id : entities) (id.startsWith("light.") ? lights : switches).add(id);
+        try {
+            if (action.equals("restore")) {
+                List<String> scenes = new ArrayList<>();
+                for (String id : entities) scenes.add("scene." + sceneId(id));
+                if (!scenes.isEmpty()) out.add(new Call("scene.turn_on", fade(ids(scenes), transition)));
+                return out;
+            }
+            boolean on = action.equals("on"), dim = action.equals("dim");
+            if (!on && !dim && !action.equals("off")) return out;
+            if (!lights.isEmpty()) {
+                JSONObject d = fade(ids(lights), transition);
+                if (dim) d.put("brightness_pct", level);
+                out.add(new Call(on || dim ? "light.turn_on" : "light.turn_off", d));
+            }
+            if (!switches.isEmpty()) out.add(new Call(on ? "switch.turn_on" : "switch.turn_off", ids(switches)));
+            return out;
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);   // only put() of strings and ints
+        }
+    }
+
+    private static JSONObject ids(List<String> ids) throws JSONException {
+        return new JSONObject().put("entity_id", ids.size() == 1 ? ids.get(0) : new JSONArray(ids));
+    }
+
+    private static JSONObject fade(JSONObject data, int transition) throws JSONException {
+        return transition > 0 ? data.put("transition", transition) : data;
     }
 
     /**
