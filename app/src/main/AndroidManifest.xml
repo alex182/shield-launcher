@@ -16,6 +16,10 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- Ambilight: a foreground service holds the screen capture (Android 10+
+         requires one of type mediaProjection). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -66,6 +70,20 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/quick_menu_service" />
         </service>
+
+        <!-- Ambilight: the screen capture and the stream to the WLED strips. -->
+        <service
+            android:name=".AmbilightService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <!-- Invisible: only an activity can ask for the screen capture token. -->
+        <activity
+            android:name=".AmbilightActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Invisible" />
 
         <!-- Screensaver: the background with the clock. Picked in Settings →
              Device Preferences → Screen saver, or over adb; see README. -->

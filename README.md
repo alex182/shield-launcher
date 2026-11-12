@@ -25,8 +25,8 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`, `VisualizerOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row) |
-| `app/src/test/` | JVM unit tests (`Backgrounds`, `Agenda`, `Alerts`, `Lights`, `TileFlow` wrapping); JUnit is test-only |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`, `VisualizerOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row); ambilight: `Ambilight` (pure geometry, sampling and packets), `AmbilightConfig` (settings), `AmbilightService` (capture and streaming), `AmbilightActivity` (asks for the capture) |
+| `app/src/test/` | JVM unit tests (`Backgrounds`, `Agenda`, `Alerts`, `Lights`, `TileFlow` wrapping, `Ambilight`); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font), `visualizer/` (butterchurn page and presets) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
 | `tools/update-mdi.sh` | refresh the bundled icon font |
@@ -209,10 +209,72 @@ The config page's **Show on the TV now** opens it too.
   `adb logcat -s Visualizer chromium` for problems; it logs each session it
   attaches to.
 
+## Ambilight
+
+WLED strips round the TV's room take their colour from the picture
+(`AmbilightService`). Each LED shows the part of the picture it's nearest, as
+if the picture carried on past its edges into the room: one up and left of
+the TV shows the top-left corner, one on the right wall the right edge, one
+on the ceiling above the TV the middle of the top edge. LEDs near the middle
+of the back wall, roughly in line with the screen, have no edge to go by, so
+they fade to the whole picture's average.
+
+- **Layout** (config page, Ambilight): the room as a box seen from the seat
+  facing the TV (width, depth, height), the TV on the TV wall (size, centre,
+  how far it stands out), and each strip as a path of points on the walls,
+  ceiling, floor or the back of the TV. The path runs from the strip's data
+  input end. Points are drawn on an unfolded room (ceiling above the TV wall,
+  floor below, the four walls in a row) and checked in a 3D view; the TV adds
+  the corner point when a path crosses to a neighbouring surface. **Run it
+  round the TV** lays a strip round the back of the TV from a chosen corner.
+  Stored in centimetres (`ambilight` in SharedPreferences, see
+  `AmbilightConfig`); the page shows inches or centimetres.
+- **Strips:** each has a WLED address (`ip` or `ip:port`), its first LED's
+  index on that controller and its LED count. Several strips can share one
+  controller at different offsets. The LEDs are spread evenly along the path.
+- **Streaming:** WLED's realtime UDP, DNRGB on port 21324 (WLED's Sync
+  settings → "Receive UDP realtime", on by default), up to 489 LEDs a packet,
+  at 30 updates a second by default. Every packet carries a 2 s timeout, so
+  when the stream stops (Stop, screen off, a crash) WLED goes back to what it
+  was doing by itself. WLED that was off turns on for it, at its last
+  brightness, and off again after.
+- **Picture:** the screen is mirrored into a 160×90 capture
+  (`MediaProjection`). Each LED averages a patch touching the border at its
+  point (15% deep by default) through summed-area tables, so the cost doesn't
+  depend on patch size. Letterbox and pillarbox bars are skipped once they've
+  held for 0.7 s, the same top and bottom so subtitles in a bar don't move
+  it. Brightness, saturation (120% by default), gamma and smoothing (an
+  exponential fade, 150 ms) are settings.
+- **Protected video is black.** Netflix, Disney+, Prime and most paid
+  streaming draw on secure surfaces that every screen capture sees as black,
+  so the strips go dark for them; the page says so when the picture has
+  been black for a few seconds. Jellyfin, YouTube, games, the home screen and
+  the visualizer come through. Lighting DRM video would need an HDMI capture
+  device, not the SHIELD.
+- **On and off:** **Ambilight** in quick actions (above Sleep, once there's a
+  strip), Start/Stop on the config page, or **Start with the TV**, which
+  starts it whenever the screen comes on. It pauses while the screen is off.
+- **The capture token:** only an activity can ask for one
+  (`AmbilightActivity`, invisible), and Android 10+ wants it held by a
+  foreground service of type `mediaProjection` (`AmbilightService`).
+  `./build.sh install` runs `appops set dev.alex.minlauncher PROJECT_MEDIA
+  allow`, so the system grants it without its "Start now?" dialog; without
+  that, the TV asks each time it starts.
+- **Testing:** **Test pattern** lights every strip with the picture's border
+  in rainbow colours (right edge red, top yellow-green, left cyan, bottom
+  blue to magenta), the same colours the page draws, so the room should match
+  the drawing. **Find its ends** lights one strip's first LED green and last
+  red with a white dot running from first to last, to check which end is the
+  input and that the count is right. Both use the page's unsaved layout and
+  run for a minute, then the ambilight carries on as before. **Colours: live
+  from the TV** shows what each LED is being sent.
+- **Debugging:** the page's status line (frames a second, bars skipped,
+  per-strip send errors); `adb logcat -s Ambilight`.
+
 ## Web config page
 
 `http://<shield-ip>:8080` (Office `192.168.1.209`, Livingroom `192.168.1.197`)
-edits pins, hidden apps, quick actions, hold time, the visualizer and the Home Assistant URL
+edits pins, hidden apps, quick actions, hold time, the visualizer, the ambilight and the Home Assistant URL
 and token, live, per device. "From Home Assistant…" on an action lists your entities
 (filterable: automations, scenes, scripts, lights, …); tick one or more of
 the same kind (say two lights, or several automations), then pick one of the
@@ -227,7 +289,26 @@ quick actions service (`WebConfigServer`), so that service must be enabled.
 
 `./build.sh install` does the device setup: it appends the service to
 `enabled_accessibility_services` (replacing the list would switch off any
-other app's service, such as Button Mapper) and adds the app to the doze allowlist.
+other app's service, such as Button Mapper) adds the app to the doze allowlist, and lets it capture the screen for the
+ambilight (`PROJECT_MEDIA`) without a dialog.
+
+### Backup
+
+The page's **Backup** section downloads the settings as a JSON file
+(`GET /api/backup`, `Backup.java`): pins, hidden apps, quick actions, the
+visualizer and its likes, the ambilight's layout, cameras, calendar,
+weather, background and the Home Assistant URL. It doesn't hold the Home
+Assistant token (the page never reads it back, so type it again on a fresh
+install), or what the TV writes for itself (statuses, alerts and reminders
+already shown).
+
+**Restore from a file…** shows where and when the backup was made and puts
+back the parts ticked (`POST /api/restore`). Each part replaces this
+SHIELD's, and settings the backup doesn't have go back to their defaults. A
+backup from the other SHIELD starts with the ambilight unticked, since its
+layout belongs to that room. The whole file is checked before anything is
+written, and the settings it replaced are kept for one **Undo the last
+restore**.
 
 ## Backgrounds
 

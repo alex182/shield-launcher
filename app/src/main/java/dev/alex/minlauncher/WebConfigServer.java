@@ -158,6 +158,40 @@ final class WebConfigServer implements Runnable {
                 } catch (IOException e) {
                     send(client, 502, "application/json", error(e.getMessage()));
                 }
+            } else if (method.equals("GET") && path.equals("/api/backup")) {
+                send(client, 200, "application/json", backup().toString(1));
+            } else if (method.equals("POST") && path.equals("/api/restore")) {
+                JSONObject o = new JSONObject(text);
+                restore(o.getJSONObject("backup"), strings(o.getJSONArray("groups")));
+                sendResult(client, () -> "Restored");
+            } else if (method.equals("POST") && path.equals("/api/restore/undo")) {
+                String undo = store.prefs().getString(Backup.KEY_UNDO, "");
+                if (undo.isEmpty()) {
+                    sendResult(client, () -> { throw new IOException("Nothing to undo"); });
+                } else {
+                    Backup.apply(store.prefs(), Backup.read(new JSONObject(undo), Backup.groupIds()));
+                    store.prefs().edit().remove(Backup.KEY_UNDO).commit();
+                    sendResult(client, () -> "Back to how it was before the restore");
+                }
+            } else if (method.equals("GET") && path.equals("/api/ambilight")) {
+                send(client, 200, "application/json", AmbilightService.status().toString());
+            } else if (method.equals("POST") && path.equals("/api/ambilight/preview")) {
+                // Where each LED of the page's (unsaved) layout sits and what it shows.
+                JSONObject c = AmbilightConfig.normalize(new JSONObject(text).optJSONObject("config"));
+                send(client, 200, "application/json", AmbilightConfig.preview(c).toString());
+            } else if (method.equals("POST") && path.equals("/api/ambilight/start")) {
+                // With no strips saved it still captures, so the page shows that the capture works.
+                boolean none = store.ambilight().getJSONArray("strips").length() == 0;
+                AmbilightService.start(context);
+                sendResult(client, () -> none ? "Starting on the TV, but no strips are saved yet, so nothing lights"
+                        : "Starting on the TV");
+            } else if (method.equals("POST") && path.equals("/api/ambilight/stop")) {
+                AmbilightService.stop(context);
+                sendResult(client, () -> "Stopped");
+            } else if (method.equals("POST") && path.equals("/api/ambilight/test")) {
+                JSONObject o = new JSONObject(text);
+                AmbilightService.test(context, o.optJSONObject("config"), o.optString("pattern"), o.optInt("strip"));
+                sendResult(client, () -> "Test pattern on the strips for a minute");
             } else if (method.equals("POST") && path.equals("/api/radar/show")) {
                 showRadar.run();
                 sendResult(client, () -> "Showing on the TV");
@@ -293,6 +327,9 @@ final class WebConfigServer implements Runnable {
                 .put("alertsPoint", store.alertsPoint())
                 .put("alertsSeverities", new JSONArray(Alerts.SEVERITIES))
                 .put("alertsStatus", new JSONObject(store.alertsStatus()))
+                .put("ambilight", store.ambilight())
+                .put("backupGroups", Backup.groupsJson())
+                .put("restoreUndo", undoInfo())
                 .put("haUrl", store.haUrl())
                 .put("haTokenSet", !store.haToken().isEmpty())
                 .put("background", background());
@@ -317,6 +354,16 @@ final class WebConfigServer implements Runnable {
                 .put("dumpDenied", AudioSessions.denied(dump));
     }
 
+    /** When the settings an undo would bring back were saved; null when there's nothing to undo. */
+    private Object undoInfo() {
+        try {
+            JSONObject u = new JSONObject(store.prefs().getString(Backup.KEY_UNDO, ""));
+            return new JSONObject().put("at", u.optLong("createdAt"));
+        } catch (JSONException e) {
+            return JSONObject.NULL;
+        }
+    }
+
     private JSONObject background() throws JSONException {
         return new JSONObject()
                 .put("weather", store.bgWeather())
@@ -333,6 +380,23 @@ final class WebConfigServer implements Runnable {
                 .put("seasons", new JSONArray(Backgrounds.SEASONS))
                 .put("times", new JSONArray(Backgrounds.TIMES))
                 .put("conditions", new JSONArray(Backgrounds.CONDITIONS));
+    }
+
+    private String deviceName() {
+        String name = Settings.Global.getString(context.getContentResolver(), Settings.Global.DEVICE_NAME);
+        return name == null ? "SHIELD" : name;
+    }
+
+    private JSONObject backup() throws JSONException {
+        return Backup.create(store.prefs().getAll(), deviceName(), System.currentTimeMillis());
+    }
+
+    /** Checks the whole backup first (read throws), keeps what it replaces for undo, then writes it. */
+    private void restore(JSONObject b, List<String> groups) throws JSONException {
+        java.util.Map<String, Object> changes = Backup.read(b, groups);
+        String undo = backup().toString();
+        Backup.apply(store.prefs(), changes);
+        store.prefs().edit().putString(Backup.KEY_UNDO, undo).commit();
     }
 
     private void save(JSONObject o) throws JSONException {
@@ -366,6 +430,7 @@ final class WebConfigServer implements Runnable {
             JSONObject v = o.optJSONObject("visualizer");
             store.setVisualizer(o.getBoolean("visualizerHold"), v == null ? store.visualizer() : v);
         }
+        if (o.has("ambilight")) store.setAmbilight(o.getJSONObject("ambilight"));
         if (o.has("radarShown")) store.setRadar(o.getBoolean("radarShown"), o.optString("radarSource").trim());
         if (o.has("alertsShown")) {
             store.setAlerts(o.getBoolean("alertsShown"), o.optString("alertsSeverity"),

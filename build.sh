@@ -41,6 +41,8 @@ if [ "${1:-}" = "install" ]; then
             # and capturing it (RECORD_AUDIO).
             adb -s "$d" shell pm grant dev.alex.minlauncher android.permission.RECORD_AUDIO </dev/null
             adb -s "$d" shell pm grant dev.alex.minlauncher android.permission.DUMP </dev/null
+            # The ambilight's screen capture, granted without the "Start now?" dialog.
+            adb -s "$d" shell appops set dev.alex.minlauncher PROJECT_MEDIA allow </dev/null
             # Doze otherwise firewalls the config page while the SHIELD sleeps.
             adb -s "$d" shell dumpsys deviceidle whitelist +dev.alex.minlauncher </dev/null >/dev/null
             adb -s "$d" shell input keyevent KEYCODE_HOME </dev/null

@@ -48,4 +48,8 @@
     <string name="visualizer_no_audio">No sound to draw: the launcher needs the record-audio permission (adb shell pm grant dev.alex.minlauncher android.permission.RECORD_AUDIO)</string>
     <string name="visualizer_no_mic">No microphone to listen to</string>
     <string name="visualizer_no_dump">Can\'t tell which app is playing: the launcher needs the dump permission (adb shell pm grant dev.alex.minlauncher android.permission.DUMP)</string>
+    <string name="ambilight">Ambilight</string>
+    <string name="ambilight_running">Lighting the room from the screen</string>
+    <string name="ambilight_on">Ambilight · on</string>
+    <string name="ambilight_off">Ambilight · off</string>
 </resources>

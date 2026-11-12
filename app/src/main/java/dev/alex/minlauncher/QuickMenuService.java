@@ -46,8 +46,9 @@ import java.util.concurrent.Executors;
  * ({@link VisualizerOverlay}); a short press is held back until release, then
  * sent on as a media key. The service also hosts the
  * web config page, the rain radar pop-up ({@link RadarOverlay})
- * the NWS alert banner ({@link AlertBanner}) and calendar reminders
- * ({@link EventReminders}), since it is the one component that is always
+ * the NWS alert banner ({@link AlertBanner}), calendar reminders
+ * ({@link EventReminders}) and starts the room ambilight
+ * ({@link AmbilightService}) when the screen comes on, since it is the one component that is always
  * running. Back closes the banner or a reminder and steps the radar down (full screen, corner, closed), when nothing else of ours is up.
  *
  * An accessibility service is the only way a non-system app sees keys meant
@@ -99,10 +100,16 @@ public class QuickMenuService extends AccessibilityService {
             if (sleepAt != 0 && sleepRow != null) handler.postDelayed(this, MINUTE_MS);
         }
     };
-    /** Turned off some other way: the timer has nothing left to do. */
+    /** Off some other way: the timer has nothing left to do. On: the ambilight, if it starts with the TV. */
     private final BroadcastReceiver screenOff = new BroadcastReceiver() {
-        @Override public void onReceive(Context c, Intent i) { cancelSleep(); }
+        @Override public void onReceive(Context c, Intent i) {
+            if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) autoStartAmbilight();
+            else cancelSleep();
+        }
     };
+    private TextView ambilightRow;
+    /** After boot, give HOME a moment before the capture starts. */
+    private static final long AMBILIGHT_BOOT_DELAY_MS = 5000;
 
     // Netflix-button gesture state.
     private boolean holdFired;       // this press already opened quick actions
@@ -131,7 +138,19 @@ public class QuickMenuService extends AccessibilityService {
                 () -> handler.post(alerts::test), () -> handler.post(reminders::test),
                 () -> handler.post(reminders::testDigest), (playlist, preset) -> handler.post(() -> visualizer.show(playlist, preset)));
         web.start();
-        registerReceiver(screenOff, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+        IntentFilter screen = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        screen.addAction(Intent.ACTION_SCREEN_ON);
+        registerReceiver(screenOff, screen);
+        handler.postDelayed(this::autoStartAmbilight, AMBILIGHT_BOOT_DELAY_MS);
+    }
+
+    private void autoStartAmbilight() {
+        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        JSONObject a = store.ambilight();
+        if (a.optBoolean("autoStart") && pm.isInteractive() && a.optJSONArray("strips").length() > 0
+                && !AmbilightService.isOn()) {
+            AmbilightService.start(this);
+        }
     }
 
     @Override
@@ -348,6 +367,11 @@ public class QuickMenuService extends AccessibilityService {
         scroll.addView(list);
         box.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        if (store.ambilight().optJSONArray("strips").length() > 0) {
+            ambilightRow = makeRow("", v -> toggleAmbilight());
+            box.addView(ambilightRow);
+            updateAmbilightRow(AmbilightService.isOn());
+        }
         if (store.sleepShown()) {
             sleepRow = makeRow(Icons.withLabel(this, "mdi:power-sleep", ""), v -> toggleSleep());
             box.addView(sleepRow);
@@ -368,7 +392,8 @@ public class QuickMenuService extends AccessibilityService {
         wm.addView(panel, lp);
         // As in MainActivity, focus only sticks once the views are laid out.
         box.post(() -> {
-            View first = list.getChildCount() > 0 ? list.getChildAt(0) : sleepRow;
+            View first = list.getChildCount() > 0 ? list.getChildAt(0)
+                    : ambilightRow != null ? ambilightRow : sleepRow;
             if (first != null) first.requestFocus();
         });
     }
@@ -377,6 +402,7 @@ public class QuickMenuService extends AccessibilityService {
         if (lights != null) lights.hide();
         handler.removeCallbacks(sleepRowTick);
         sleepRow = null;
+        ambilightRow = null;
         header = null;
         if (panel == null) return;
         wm.removeView(panel);
@@ -429,6 +455,22 @@ public class QuickMenuService extends AccessibilityService {
             String shown = msg;
             handler.post(() -> toast(shown));
         });
+    }
+
+    // -------------------------------------------------------------- ambilight
+
+    /** The row shows what it was switched to; the capture itself starts a moment later. */
+    private void toggleAmbilight() {
+        boolean on = !AmbilightService.isOn();
+        if (on) AmbilightService.start(this);
+        else AmbilightService.stop(this);
+        updateAmbilightRow(on);
+    }
+
+    private void updateAmbilightRow(boolean on) {
+        if (ambilightRow == null) return;
+        ambilightRow.setText(Icons.withLabel(this, "mdi:television-ambient-light",
+                getString(on ? R.string.ambilight_on : R.string.ambilight_off)));
     }
 
     // ------------------------------------------------------------------ sleep

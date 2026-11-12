@@ -112,7 +112,38 @@
   .pick:disabled { opacity: .35; cursor: default; background: none; }
   dialog .foot { display: flex; align-items: center; gap: 10px; padding: 10px 18px 16px; border-top: 1px solid var(--line); }
   dialog .foot span { flex: 1; min-width: 0; color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .amb-views { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .amb-views .spacer { flex: 1; }
+  .amb-stage { background: #050505; border: 1px solid var(--line); border-radius: 8px; margin-top: 8px; overflow: hidden; }
+  .amb-stage svg, .amb-stage canvas { display: block; width: 100%; touch-action: none; user-select: none; }
+  .amb-stage canvas { cursor: grab; }
+  #amb-svg .face { fill: #0d0d0d; stroke: #333; vector-effect: non-scaling-stroke; cursor: crosshair; }
+  #amb-svg .face:hover { fill: #141414; }
+  #amb-svg .face.tvwall { fill: #111; }
+  #amb-svg .tv { fill: #1b1b1b; stroke: #9a9a9a; vector-effect: non-scaling-stroke; cursor: move; }
+  #amb-svg .guide { stroke: #666; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; pointer-events: none; }
+  #amb-svg .tv:hover { fill: #222; }
+  #amb-svg text { fill: #5c5c5c; pointer-events: none; font-family: system-ui, sans-serif; }
+  #amb-svg .seg { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+  #amb-svg .seg.air { stroke-dasharray: 4 4; }
+  #amb-svg .hit { fill: none; stroke: transparent; stroke-width: 14px; vector-effect: non-scaling-stroke; cursor: copy; }
+  #amb-svg .pt { stroke: #000; vector-effect: non-scaling-stroke; cursor: move; }
+  #amb-svg .dim { opacity: .45; }
+  .amb-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; display: inline-block; }
+  .card.sel { border-color: #555; }
+  .stats { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .stats .bad { color: var(--bad); }
+  .wrap { flex-wrap: wrap; margin-top: 10px; }
+  .wrap select { width: auto; }
+  details.points { margin-top: 10px; }
+  details.points summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+  .pts { display: grid; grid-template-columns: 26px 1fr 1fr 1fr 1fr auto; gap: 4px 6px; align-items: center; margin-top: 6px; font-size: 12px; }
+  .pts input { padding: 4px 6px; font-size: 13px; }
+  .pts .h { color: var(--dim); }
   @media (max-width: 640px) {
+    .pts { grid-template-columns: 22px 1fr 1fr 1fr auto; }
+    .pts .face-name { display: none; }
     header { padding: 12px 16px; flex-wrap: wrap; }
     .grid, .grid3, .grid5 { grid-template-columns: 1fr; }
   }
@@ -264,6 +295,78 @@
     </div>
     <p class="hint" style="margin:6px 0 0">The choices from butterchurnviz.com, less its 2x and 4x canvases. Bigger canvases
       and meshes are sharper but slower; drop them if the picture stutters.</p>
+  </section>
+
+  <section id="ambilight">
+    <h2>Ambilight</h2>
+    <p class="hint">WLED strips round the room take their colour from the picture: each LED shows the part of the
+      picture it's nearest, as if the picture carried on past its edges into the room. Set the room's size, where the TV
+      hangs, then draw each strip's path on the walls, ceiling, floor or the back of the TV, starting at its data input
+      end. The SHIELD streams to each WLED over UDP (realtime, port 21324, on by default in WLED's Sync settings); when it
+      stops, WLED goes back to what it was doing within two seconds.</p>
+    <div class="now" id="amb-now">…</div>
+    <div class="inline" style="margin-top:10px">
+      <button id="amb-start">Start on the TV</button>
+      <button id="amb-test">Test pattern</button>
+    </div>
+    <div class="result" id="amb-result"></div>
+    <label class="check"><input type="checkbox" id="amb-auto"> Start with the TV (whenever the screen comes on)</label>
+    <p class="hint" style="margin:6px 0 0">Also in quick actions, above Sleep, once there is a strip. Protected video
+      (Netflix, Disney+, Prime and most paid streaming) is black to any screen capture, so the strips go dark for it;
+      Jellyfin, YouTube, games and the home screen light up.</p>
+
+    <h3 class="sub">Room</h3>
+    <p class="hint" style="margin:4px 0 0">As seen from the seat, facing the TV.</p>
+    <div class="grid3">
+      <div><label for="amb-room-width">Width: left wall to right wall</label><input type="number" id="amb-room-width" data-amb="room.width" min="0"></div>
+      <div><label for="amb-room-depth">Depth: TV wall to back wall</label><input type="number" id="amb-room-depth" data-amb="room.depth" min="0"></div>
+      <div><label for="amb-room-height">Height: floor to ceiling</label><input type="number" id="amb-room-height" data-amb="room.height" min="0"></div>
+    </div>
+    <div class="inline" style="margin-top:8px">
+      <label for="amb-units" style="margin:0">Units</label>
+      <select id="amb-units" style="width:auto"><option value="in">Inches</option><option value="cm">Centimetres</option></select>
+    </div>
+
+    <h3 class="sub">TV</h3>
+    <div class="grid3">
+      <div><label for="amb-tv-diag">Screen size (diagonal, inches)</label><input type="number" id="amb-tv-diag" min="10" step="1"></div>
+      <div><label for="amb-tv-width">Picture width</label><input type="number" id="amb-tv-width" data-amb="tv.width" min="0"></div>
+      <div><label for="amb-tv-height">Picture height</label><input type="number" id="amb-tv-height" data-amb="tv.height" min="0"></div>
+      <div><label for="amb-tv-x">Centre, from the left wall</label><input type="number" id="amb-tv-x" data-amb="tv.x" min="0"></div>
+      <div><label for="amb-tv-z">Centre, from the floor</label><input type="number" id="amb-tv-z" data-amb="tv.z" min="0"></div>
+      <div><label for="amb-tv-offset">Screen out from the wall</label><input type="number" id="amb-tv-offset" data-amb="tv.offset" min="0"></div>
+    </div>
+
+    <h3 class="sub">Strips</h3>
+    <div class="amb-views">
+      <button id="amb-view-net" class="on">Unfolded room</button>
+      <button id="amb-view-3d">3D</button>
+      <span class="spacer"></span>
+      <select id="amb-colors" style="width:auto">
+        <option value="test">Colours: test pattern</option>
+        <option value="live">Colours: live from the TV</option>
+      </select>
+    </div>
+    <div class="amb-stage" id="amb-stage">
+      <svg id="amb-svg"><g id="amb-g"></g></svg>
+      <canvas id="amb-canvas" hidden></canvas>
+    </div>
+    <div class="amb-legend" id="amb-legend"></div>
+    <p class="hint" style="margin:6px 0 0" id="amb-help"></p>
+    <div id="amb-strips" style="margin-top:12px"></div>
+    <div class="inline"><button id="amb-add">Add strip</button></div>
+
+    <h3 class="sub">Picture</h3>
+    <div class="grid3">
+      <div><label for="amb-brightness">Brightness (%)</label><input type="number" id="amb-brightness" data-amb="brightness" min="0" max="100" step="5"></div>
+      <div><label for="amb-saturation">Saturation (%, 100 = as is)</label><input type="number" id="amb-saturation" data-amb="saturation" min="0" max="300" step="10"></div>
+      <div><label for="amb-gamma">Gamma (1 = none)</label><input type="number" id="amb-gamma" data-amb="gamma" min="0.5" max="3" step="0.1"></div>
+      <div><label for="amb-smoothing">Smoothing (ms)</label><input type="number" id="amb-smoothing" data-amb="smoothingMs" min="0" max="2000" step="10"></div>
+      <div><label for="amb-edge">How far into the picture (%)</label><input type="number" id="amb-edge" data-amb="edgeDepth" min="2" max="50" step="1"></div>
+      <div><label for="amb-fps">Updates a second</label>
+        <select id="amb-fps"><option>15</option><option>20</option><option>25</option><option>30</option><option>45</option><option>60</option></select></div>
+    </div>
+    <label class="check"><input type="checkbox" id="amb-bars"> Skip black bars (letterboxed films light the room from the picture, not the bars)</label>
   </section>
 
   <section>
@@ -457,6 +560,32 @@
       <button id="ha-test">Test connection</button>
     </div>
     <div class="result" id="ha-result"></div>
+  </section>
+
+  <section id="backup">
+    <h2>Backup</h2>
+    <p class="hint">Saves this SHIELD's settings to a file: pinned and hidden apps, quick actions, the visualizer and its
+      liked presets, the ambilight's room and strips, cameras, calendar, weather, background and the Home Assistant
+      address. Not the Home Assistant token: this page never reads it back, so type it again after restoring onto a fresh
+      install. Restore puts back the parts you pick, from this SHIELD's backups or the other one's.</p>
+    <div class="inline">
+      <button id="backup-download">Download backup</button>
+      <button id="backup-restore">Restore from a file…</button>
+      <input type="file" id="backup-file" accept=".json,application/json" hidden>
+    </div>
+    <div id="restore-panel" hidden style="margin-top:12px">
+      <div class="now" id="restore-what"></div>
+      <div id="restore-groups" style="margin-top:6px"></div>
+      <div class="inline" style="margin-top:10px">
+        <button class="primary" id="restore-go">Restore these</button>
+        <button id="restore-cancel">Cancel</button>
+      </div>
+    </div>
+    <div class="inline" style="margin-top:10px" id="restore-undo-wrap" hidden>
+      <button id="restore-undo">Undo the last restore</button>
+      <span style="color:var(--dim);font-size:13px" id="restore-undo-when"></span>
+    </div>
+    <div class="result" id="backup-result"></div>
   </section>
 </main>
 
@@ -745,6 +874,7 @@ async function load() {
   $('sleep-minutes').value = state.sleepMinutes;
   $('sleep-shown').checked = state.sleepShown;
   loadVisualizer();
+  loadAmbilight();
   $('radar-shown').checked = state.radarShown;
   $('radar-source').value = state.radarSource;
   $('radar-source').placeholder = state.radarDefault;
@@ -779,6 +909,7 @@ async function load() {
   $('ha-clear').checked = false;
   $('clear-wrap').style.display = state.haTokenSet ? '' : 'none';
   loadBackground(state.background);
+  renderUndo();
   render();
   markSaved('Saved');
 }
@@ -1027,7 +1158,7 @@ document.addEventListener('input', e => {
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
   if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
-      || /^(bg|ov|radar|alerts|calendar|visualizer|viz)-/.test(e.target.id)) markDirty();
+      || /^(bg|ov|radar|alerts|calendar|visualizer|viz|amb)-/.test(e.target.id)) markDirty();
 });
 
 $('add-action').onclick = () => {
@@ -1261,6 +1392,787 @@ $('visualizer-show').onclick = async () => {
   setTimeout(renderVisualizerNow, 2500);
 };
 
+// -------------------------------------------------------------- ambilight
+//
+// Room coordinates in cm, as the TV stores them: x from the left wall to the
+// right, y from the TV wall to the back wall, z up from the floor. The
+// unfolded view lays the six surfaces out as a cross (ceiling above the TV
+// wall, floor below it, the walls in a row as you'd turn round on the seat),
+// each seen from inside the room.
+
+const AMB_COLORS = ['#4fc3f7', '#ffb74d', '#81c784', '#f06292', '#ba68c8', '#fff176', '#e57373', '#90a4ae'];
+const FACE_NAMES = {left: 'Left wall', front: 'TV wall', right: 'Right wall', back: 'Back wall',
+  ceiling: 'Ceiling', floor: 'Floor', tv: 'Back of the TV'};
+const PLANES = {left: ['x', 0], right: ['x', 'width'], front: ['y', 0], back: ['y', 'depth'],
+  floor: ['z', 0], ceiling: ['z', 'height']};
+const amb = {sel: 0, view: 'net', colors: 'test', preview: null, status: null, timer: 0,
+  yaw: 0.45, pitch: 0.42, zoom: 1, drag: null, down: null};
+
+function A() { return draft.ambilight; }
+function inches() { return A().units === 'in'; }
+/** cm → the number shown: half inches, or whole cm. */
+function toU(cm) { return inches() ? Math.round(cm / 2.54 * 2) / 2 : Math.round(cm); }
+function fromU(v) { return inches() ? v * 2.54 : v; }
+function lenText(cm) {
+  if (!inches()) return cm >= 100 ? (cm / 100).toFixed(2) + ' m' : Math.round(cm) + ' cm';
+  const i = Math.round(cm / 2.54);
+  return i >= 12 ? `${Math.floor(i / 12)} ft ${i % 12} in` : i + ' in';
+}
+function getPath(o, path) { return path.split('.').reduce((v, k) => v[k], o); }
+function setPath(o, path, v) { const ks = path.split('.'), last = ks.pop(); ks.reduce((x, k) => x[k], o)[last] = v; }
+const LENGTHS = new Set(['room.width', 'room.depth', 'room.height', 'tv.x', 'tv.z', 'tv.offset', 'tv.width', 'tv.height']);
+
+function loadAmbilight() {
+  draft.ambilight = JSON.parse(JSON.stringify(state.ambilight));
+  amb.sel = Math.min(amb.sel, Math.max(0, A().strips.length - 1));
+  $('amb-auto').checked = A().autoStart;
+  $('amb-units').value = A().units;
+  $('amb-fps').value = String(A().fps);
+  $('amb-bars').checked = A().blackBars;
+  renderAmbInputs();
+  renderAmbStrips();
+  renderStage();
+  schedulePreview(0);
+}
+
+function renderAmbInputs() {
+  for (const el of document.querySelectorAll('[data-amb]')) {
+    const path = el.dataset.amb, v = getPath(A(), path);
+    el.value = LENGTHS.has(path) ? toU(v) : v;
+    if (LENGTHS.has(path)) el.step = inches() ? '0.5' : '1';
+  }
+  const tv = A().tv;
+  $('amb-tv-diag').value = Math.round(Math.hypot(tv.width, tv.height) / 2.54);
+}
+
+// ------------------------------------------------------------- geometry
+
+function room() { return A().room; }
+
+/** The surfaces a point lies on (within half a centimetre). */
+function facesOf(p) {
+  const r = room(), tv = A().tv, e = 0.5, out = [];
+  if (Math.abs(p.y - tv.offset) < e && Math.abs(p.x - tv.x) <= tv.width / 2 + e
+      && Math.abs(p.z - tv.z) <= tv.height / 2 + e) out.push('tv');
+  if (Math.abs(p.x) < e) out.push('left');
+  if (Math.abs(p.x - r.width) < e) out.push('right');
+  if (Math.abs(p.y) < e) out.push('front');
+  if (Math.abs(p.y - r.depth) < e) out.push('back');
+  if (Math.abs(p.z) < e) out.push('floor');
+  if (Math.abs(p.z - r.height) < e) out.push('ceiling');
+  return out;
+}
+
+/** The surface a point is drawn on: its own, or the nearest if it's out in the room. */
+function faceOf(p) {
+  const f = facesOf(p);
+  if (f.length) return f[0];
+  const r = room(), d = {left: p.x, right: r.width - p.x, front: p.y, back: r.depth - p.y,
+    floor: p.z, ceiling: r.height - p.z};
+  return Object.keys(d).reduce((a, b) => d[a] <= d[b] ? a : b);
+}
+
+function faceRects() {
+  const {width: W, depth: D, height: H} = room(), tv = A().tv;
+  return {
+    left: {x: 0, y: D, w: D, h: H}, front: {x: D, y: D, w: W, h: H},
+    right: {x: D + W, y: D, w: D, h: H}, back: {x: 2 * D + W, y: D, w: W, h: H},
+    ceiling: {x: D, y: 0, w: W, h: D}, floor: {x: D, y: D + H, w: W, h: D},
+    tv: {x: D + tv.x - tv.width / 2, y: D + H - tv.z - tv.height / 2, w: tv.width, h: tv.height},
+  };
+}
+
+/** A room point on the unfolded view, drawn on one of its surfaces. */
+function toNet(face, p) {
+  const {width: W, depth: D, height: H} = room();
+  switch (face) {
+    case 'left': return [D - p.y, D + H - p.z];
+    case 'right': return [D + W + p.y, D + H - p.z];
+    case 'back': return [2 * D + W + (W - p.x), D + H - p.z];
+    case 'ceiling': return [D + p.x, D - p.y];
+    case 'floor': return [D + p.x, D + H + p.y];
+    default: return [D + p.x, D + H - p.z];   // TV wall, back of the TV
+  }
+}
+
+/** A spot on the unfolded view → the room point on that surface, snapped to nearby edges. */
+function fromNet(face, sx, sy) {
+  const {width: W, depth: D, height: H} = room(), tv = A().tv;
+  let p;
+  switch (face) {
+    case 'left': p = {x: 0, y: D - sx, z: D + H - sy}; break;
+    case 'right': p = {x: W, y: sx - D - W, z: D + H - sy}; break;
+    case 'back': p = {x: W - (sx - 2 * D - W), y: D, z: D + H - sy}; break;
+    case 'ceiling': p = {x: sx - D, y: D - sy, z: H}; break;
+    case 'floor': p = {x: sx - D, y: sy - D - H, z: 0}; break;
+    case 'tv': p = {x: sx - D, y: tv.offset, z: D + H - sy}; break;
+    default: p = {x: sx - D, y: 0, z: D + H - sy};
+  }
+  const snap = Math.max(W, D, H) * 0.015;
+  const near = (v, targets) => targets.reduce((best, t) => Math.abs(v - t) < snap && Math.abs(v - t) < Math.abs(v - best) ? t : best, v);
+  if (face === 'tv') {
+    p.x = near(p.x, [tv.x - tv.width / 2, tv.x, tv.x + tv.width / 2]);
+    p.z = near(p.z, [tv.z - tv.height / 2, tv.z, tv.z + tv.height / 2]);
+  } else {
+    p.x = near(p.x, [0, W]); p.y = near(p.y, [0, D]); p.z = near(p.z, [0, H]);
+  }
+  const clamp = (v, hi) => Math.round(Math.max(0, Math.min(hi, v)) * 2) / 2;
+  return {x: clamp(p.x, W), y: clamp(p.y, D), z: clamp(p.z, H)};
+}
+
+/**
+ * Where a path from a to b, on two surfaces that meet, crosses their shared
+ * edge (the shortest way over it); null if they don't meet.
+ */
+function crossing(a, b) {
+  const r = room();
+  for (const fa of facesOf(a)) for (const fb of facesOf(b)) {
+    if (!PLANES[fa] || !PLANES[fb]) continue;
+    const [axA, va] = PLANES[fa], [axB, vb] = PLANES[fb];
+    if (axA === axB) continue;
+    const vA = typeof va === 'string' ? r[va] : va, vB = typeof vb === 'string' ? r[vb] : vb;
+    const e = ['x', 'y', 'z'].find(k => k !== axA && k !== axB);
+    const da = Math.abs(a[axB] - vB), db = Math.abs(b[axA] - vA), t = da + db ? da / (da + db) : 0.5;
+    const p = {}; p[axA] = vA; p[axB] = vB; p[e] = Math.round((a[e] + (b[e] - a[e]) * t) * 2) / 2;
+    return p;
+  }
+  return null;
+}
+
+function shareFace(a, b) {
+  const fb = facesOf(b);
+  return facesOf(a).find(f => fb.includes(f));
+}
+
+/** The surface a path's point is drawn on: the one its path runs along, so a corner point sits at the end of its line. */
+function pointFace(pts, i) {
+  return (i > 0 && shareFace(pts[i - 1], pts[i])) || (i + 1 < pts.length && shareFace(pts[i], pts[i + 1]))
+    || faceOf(pts[i]);
+}
+
+/** Adds a point at index at, with the corner crossings to its neighbours that it needs. */
+function insertPoint(s, at, p) {
+  const pts = A().strips[s].points;
+  const add = [p];
+  const prev = pts[at - 1], next = pts[at];
+  if (prev && !shareFace(prev, p)) { const c = crossing(prev, p); if (c) add.unshift(c); }
+  if (next && !shareFace(p, next)) { const c = crossing(p, next); if (c) add.push(c); }
+  pts.splice(at, 0, ...add);
+  return at + add.indexOf(p);
+}
+
+// --------------------------------------------------------- the net (2D)
+
+function svgPoint(e) {
+  const svg = $('amb-svg'), pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  return pt.matrixTransform($('amb-g').getScreenCTM().inverse());
+}
+
+/** The surface under a spot on the unfolded view, the TV first. */
+function faceAt(sx, sy) {
+  const rects = faceRects();
+  for (const f of ['tv', 'front', 'left', 'right', 'back', 'ceiling', 'floor']) {
+    const r = rects[f];
+    if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) return f;
+  }
+  return null;
+}
+
+/** The picture's border round the TV: the test pattern's hues, as the strips would show them. */
+function tvBorder(rect, unit) {
+  let out = '';
+  const n = 48, cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+  const at = t => {   // round the border, 0..1 clockwise from the top-left corner
+    const per = 2 * (rect.w + rect.h); let d = t * per;
+    if (d < rect.w) return [rect.x + d, rect.y]; d -= rect.w;
+    if (d < rect.h) return [rect.x + rect.w, rect.y + d]; d -= rect.h;
+    if (d < rect.w) return [rect.x + rect.w - d, rect.y + rect.h]; d -= rect.w;
+    return [rect.x, rect.y + rect.h - d];
+  };
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = at(i / n), [x1, y1] = at((i + 1) / n), [mx, my] = at((i + 0.5) / n);
+    const hue = (Math.atan2(-(my - cy) / rect.h, (mx - cx) / rect.w) * 180 / Math.PI + 360) % 360;
+    out += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="hsl(${hue},100%,50%)" stroke-width="3" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+  }
+  return out;
+}
+
+function ledColor(s, i, led) {
+  const live = amb.colors === 'live' && amb.status && amb.status.strips && amb.status.strips[s];
+  const c = live && live.colors;
+  if (c && c.length === A().strips[s].count * 6) return '#' + c.substr(i * 6, 6);
+  return led ? led[6] : '#444';
+}
+
+function renderNet() {
+  const {width: W, depth: D, height: H} = room();
+  const NW = 2 * D + 2 * W, NH = H + 2 * D, pad = NW * 0.01, unit = NW / 900;
+  const svg = $('amb-svg');
+  svg.setAttribute('viewBox', `${-pad} ${-pad} ${NW + 2 * pad} ${NH + 2 * pad}`);
+  const rects = faceRects();
+  let h = '';
+  for (const f of ['ceiling', 'left', 'front', 'right', 'back', 'floor']) {
+    const r = rects[f];
+    h += `<rect class="face ${f === 'front' ? 'tvwall' : ''}" data-face="${f}" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/>`;
+    const ty = f === 'ceiling' ? r.y + unit * 16 : f === 'floor' ? r.y + r.h - unit * 8 : r.y + unit * 16;
+    h += `<text x="${r.x + r.w / 2}" y="${ty}" font-size="${unit * 12}" text-anchor="middle">${FACE_NAMES[f]}</text>`;
+  }
+  const tv = rects.tv;
+  h += `<rect class="tv" data-face="tv" x="${tv.x}" y="${tv.y}" width="${tv.w}" height="${tv.h}"/>`;
+  h += tvBorder(tv, unit);
+  if (amb.tvDrag && amb.tvDrag.centred) {
+    const f = rects.front;
+    h += `<line class="guide" x1="${f.x + f.w / 2}" y1="${f.y}" x2="${f.x + f.w / 2}" y2="${f.y + f.h}"/>`;
+  }
+  h += `<text x="${tv.x + tv.w / 2}" y="${tv.y + tv.h / 2 + unit * 4}" font-size="${unit * 11}" text-anchor="middle">TV</text>`;
+  // The seat's side of the room, for orientation.
+  h += `<text x="${rects.back.x + rects.back.w / 2}" y="${rects.back.y + rects.back.h - unit * 8}" font-size="${unit * 10}" text-anchor="middle">(behind the seat)</text>`;
+
+  const order = A().strips.map((_, i) => i).filter(i => i !== amb.sel);
+  if (amb.sel < A().strips.length) order.push(amb.sel);
+  for (const s of order) {
+    const st = A().strips[s], color = AMB_COLORS[s % AMB_COLORS.length], dim = s !== amb.sel ? 'dim' : '';
+    const pts = st.points;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], f = shareFace(a, b);
+      const [x1, y1] = toNet(f || faceOf(a), a), [x2, y2] = toNet(f || faceOf(b), b);
+      h += `<line class="seg ${f ? '' : 'air'} ${dim}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="2"/>`;
+      if (s === amb.sel) h += `<line class="hit" data-seg="${i}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    }
+    const prev = amb.preview && amb.preview.strips[s];
+    if (prev) prev.leds.forEach((l, i) => {
+      const p = {x: l[0], y: l[1], z: l[2]}, [x, y] = toNet(faceOf(p), p);
+      h += `<circle class="${dim}" cx="${x}" cy="${y}" r="${unit * 2.4}" fill="${ledColor(s, i, l)}" pointer-events="none"/>`;
+    });
+    pts.forEach((p, i) => {
+      const [x, y] = toNet(pointFace(pts, i), p);
+      h += `<circle class="pt ${dim}" data-s="${s}" data-p="${i}" cx="${x}" cy="${y}" r="${unit * (i === 0 ? 6.5 : 5)}" fill="${i === 0 ? '#fff' : color}"/>`;
+      if (i === 0) h += `<text x="${x + unit * 9}" y="${y - unit * 7}" font-size="${unit * 11}" style="fill:${color}">${esc(st.name)} in</text>`;
+    });
+  }
+  $('amb-g').innerHTML = h;
+}
+
+$('amb-svg').addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const t = e.target;
+  if (t.classList.contains('pt')) {
+    amb.sel = +t.dataset.s;
+    amb.drag = {s: +t.dataset.s, p: +t.dataset.p, moved: false};
+    $('amb-svg').setPointerCapture(e.pointerId);
+    renderAmbStrips();
+    e.preventDefault();
+    return;
+  }
+  amb.down = {x: e.clientX, y: e.clientY, seg: t.dataset.seg !== undefined ? +t.dataset.seg : -1};
+  // The TV: dragging moves it; a click without moving still adds a point on its back.
+  if (t.classList.contains('tv')) {
+    const q = svgPoint(e);
+    amb.tvDrag = {sx: q.x, sy: q.y, x: A().tv.x, z: A().tv.z, moving: false, centred: false};
+    $('amb-svg').setPointerCapture(e.pointerId);
+  }
+});
+
+/** Moves the TV by the drag, kept on the TV wall, snapping to the wall's middle. */
+function dragTv(e) {
+  const d = amb.tvDrag, q = svgPoint(e), r = room(), tv = A().tv;
+  if (!d.moving && Math.hypot(e.clientX - amb.down.x, e.clientY - amb.down.y) <= 6) return;
+  d.moving = true;
+  const snap = Math.max(r.width, r.depth, r.height) * 0.015;
+  let x = d.x + (q.x - d.sx), z = d.z - (q.y - d.sy);
+  x = Math.max(tv.width / 2, Math.min(r.width - tv.width / 2, x));
+  z = Math.max(tv.height / 2, Math.min(r.height - tv.height / 2, z));
+  d.centred = Math.abs(x - r.width / 2) < snap;
+  if (d.centred) x = r.width / 2;
+  changeTv(() => { tv.x = Math.round(x * 2) / 2; tv.z = Math.round(z * 2) / 2; });
+  $('amb-tv-x').value = toU(tv.x);
+  $('amb-tv-z').value = toU(tv.z);
+  renderNet();
+}
+
+$('amb-svg').addEventListener('pointermove', e => {
+  if (amb.tvDrag) { dragTv(e); return; }
+  if (!amb.drag) return;
+  const q = svgPoint(e), f = faceAt(q.x, q.y);
+  if (!f) return;
+  A().strips[amb.drag.s].points[amb.drag.p] = fromNet(f, q.x, q.y);
+  amb.drag.moved = true;
+  renderNet();
+});
+
+$('amb-svg').addEventListener('pointerup', e => {
+  if (amb.drag) {
+    const d = amb.drag;
+    amb.drag = null;
+    if (d.moved) { ambChanged(true); }
+    return;
+  }
+  const down = amb.down, tvDrag = amb.tvDrag;
+  amb.down = null;
+  amb.tvDrag = null;
+  if (tvDrag && tvDrag.moving) { ambChanged(true); return; }
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
+  const q = svgPoint(e), f = faceAt(q.x, q.y);
+  if (!f) return;
+  if (!A().strips.length) addStrip();
+  const s = Math.min(amb.sel, A().strips.length - 1), p = fromNet(f, q.x, q.y);
+  // On a segment: a new point in the middle of the path; anywhere else: on the end.
+  insertPoint(s, down.seg >= 0 ? down.seg : A().strips[s].points.length, p);
+  ambChanged(true);
+});
+
+$('amb-svg').addEventListener('dblclick', e => {
+  const t = e.target;
+  if (!t.classList.contains('pt')) return;
+  A().strips[+t.dataset.s].points.splice(+t.dataset.p, 1);
+  ambChanged(true);
+});
+
+// ------------------------------------------------------------------ 3D
+
+function render3d() {
+  const cv = $('amb-canvas'), dpr = window.devicePixelRatio || 1;
+  const cssW = cv.clientWidth || 800, cssH = Math.round(cssW * 0.56);
+  cv.style.height = cssH + 'px';
+  cv.width = cssW * dpr; cv.height = cssH * dpr;
+  const g = cv.getContext('2d'), {width: W, depth: D, height: H} = room(), tv = A().tv;
+  const c = [W / 2, D / 2, H / 2], dist = Math.hypot(W, D, H) * 1.35 / amb.zoom;
+  const cam = [c[0] + dist * Math.cos(amb.pitch) * Math.sin(amb.yaw),
+    c[1] + dist * Math.cos(amb.pitch) * Math.cos(amb.yaw), c[2] + dist * Math.sin(amb.pitch)];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const norm = a => { const l = Math.hypot(...a); return [a[0] / l, a[1] / l, a[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  // The room's axes (x right, y towards the seat, z up) are left-handed, hence up × forward for right.
+  const f = norm(sub(c, cam)), r = norm(cross([0, 0, 1], f)), u = cross(f, r);
+  const focal = cv.height * 1.15, ox = cv.width / 2, oy = cv.height / 2;
+  const proj = p => { const v = sub(p, cam), z = dot(v, f); return [ox + dot(v, r) / z * focal, oy - dot(v, u) / z * focal, z]; };
+  const poly = (pts, fill, stroke) => {
+    g.beginPath();
+    pts.map(proj).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y));
+    g.closePath();
+    if (fill) { g.fillStyle = fill; g.fill(); }
+    if (stroke) { g.strokeStyle = stroke; g.lineWidth = dpr; g.stroke(); }
+  };
+  g.fillStyle = '#050505'; g.fillRect(0, 0, cv.width, cv.height);
+  poly([[0, 0, 0], [W, 0, 0], [W, D, 0], [0, D, 0]], '#0d0d0d', '#333');           // floor
+  poly([[0, 0, 0], [W, 0, 0], [W, 0, H], [0, 0, H]], '#101010', '#333');           // TV wall
+  poly([[0, 0, 0], [0, D, 0], [0, D, H], [0, 0, H]], 'rgba(16,16,16,.6)', '#333'); // left wall
+  for (const [a, b] of [[[W, 0, H], [W, D, H]], [[0, D, H], [W, D, H]], [[W, D, 0], [W, D, H]], [[0, 0, H], [0, D, H]], [[W, 0, 0], [W, 0, H]]]) {
+    const [x1, y1] = proj(a), [x2, y2] = proj(b);
+    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.strokeStyle = '#2a2a2a'; g.lineWidth = dpr; g.stroke();
+  }
+  const tx0 = tv.x - tv.width / 2, tx1 = tv.x + tv.width / 2, tz0 = tv.z - tv.height / 2, tz1 = tv.z + tv.height / 2;
+  poly([[tx0, tv.offset, tz0], [tx1, tv.offset, tz0], [tx1, tv.offset, tz1], [tx0, tv.offset, tz1]], '#1b1b1b', '#9a9a9a');
+  g.font = `${11 * dpr}px system-ui, sans-serif`; g.fillStyle = '#5c5c5c'; g.textAlign = 'center';
+  for (const [label, p] of [['TV wall', [W / 2, 0, H - 12]], ['Left wall', [0, D / 2, H - 12]], ['Floor', [W / 2, D - 20, 0]]]) {
+    const [x, y] = proj(p); g.fillText(label, x, y);
+  }
+  // Strips: the path faint, then every LED, far ones first.
+  const dots = [];
+  A().strips.forEach((st, s) => {
+    const color = AMB_COLORS[s % AMB_COLORS.length];
+    g.beginPath();
+    st.points.forEach((p, i) => { const [x, y] = proj([p.x, p.y, p.z]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.strokeStyle = color; g.globalAlpha = s === amb.sel ? 0.5 : 0.25; g.lineWidth = dpr; g.stroke(); g.globalAlpha = 1;
+    const prev = amb.preview && amb.preview.strips[s];
+    if (prev) prev.leds.forEach((l, i) => { const [x, y, z] = proj([l[0], l[1], l[2]]); if (z > 1) dots.push([z, x, y, ledColor(s, i, l)]); });
+    if (st.points.length) {
+      const p = st.points[0], [x, y] = proj([p.x, p.y, p.z]);
+      g.fillStyle = color; g.fillText(st.name + ' in', x, y - 8 * dpr);
+    }
+  });
+  dots.sort((a, b) => b[0] - a[0]);
+  for (const [z, x, y, col] of dots) {
+    const rad = Math.max(1.2, 900 / z) * dpr;
+    g.beginPath(); g.arc(x, y, rad * 2.6, 0, 2 * Math.PI); g.fillStyle = col; g.globalAlpha = 0.18; g.fill();
+    g.beginPath(); g.arc(x, y, rad, 0, 2 * Math.PI); g.globalAlpha = 1; g.fill();
+  }
+}
+
+{
+  const cv = $('amb-canvas');
+  let last = null;
+  cv.addEventListener('pointerdown', e => { last = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+  cv.addEventListener('pointermove', e => {
+    if (!last) return;
+    amb.yaw -= (e.clientX - last[0]) * 0.008;
+    amb.pitch = Math.max(-1.2, Math.min(1.45, amb.pitch + (e.clientY - last[1]) * 0.006));
+    last = [e.clientX, e.clientY];
+    render3d();
+  });
+  cv.addEventListener('pointerup', () => { last = null; cv.style.cursor = ''; });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    amb.zoom = Math.max(0.5, Math.min(4, amb.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    render3d();
+  }, {passive: false});
+}
+
+function renderStage() {
+  $('amb-svg').style.display = amb.view === 'net' ? '' : 'none';   // an SVG element has no .hidden
+  $('amb-canvas').hidden = amb.view !== '3d';
+  $('amb-view-net').classList.toggle('on', amb.view === 'net');
+  $('amb-view-3d').classList.toggle('on', amb.view === '3d');
+  $('amb-help').innerHTML = amb.view === 'net'
+    ? 'Drag the TV to place it on the TV wall (it snaps to the middle); anything drawn on its back moves with it. ' +
+      'Click a wall, the ceiling, the floor or the TV to add a point to the end of the selected strip; click its path to add one in between. ' +
+      'Drag points to move them; double-click one to remove it. A path crossing to a neighbouring surface gets its corner point by itself. ' +
+      'The white point is the strip\'s first LED (its data input). The TV\'s border shows the test pattern\'s colours.'
+    : 'Drag to turn the room; scroll to zoom. Each dot is one LED, in its test pattern or live colour.';
+  if (amb.view === 'net') renderNet(); else render3d();
+  $('amb-legend').innerHTML = A().strips.map((st, s) =>
+    `<span><span class="swatch" style="background:${AMB_COLORS[s % AMB_COLORS.length]};vertical-align:-2px"></span> ${esc(st.name)}</span>`).join('');
+}
+
+$('amb-view-net').onclick = () => { amb.view = 'net'; renderStage(); };
+$('amb-view-3d').onclick = () => { amb.view = '3d'; renderStage(); };
+$('amb-colors').onchange = () => { amb.colors = $('amb-colors').value; renderStage(); pollAmbilight(); };
+window.addEventListener('resize', () => { if (amb.view === '3d' && draft) render3d(); });
+
+// --------------------------------------------------------------- strips
+
+const TV_STARTS = [['bl', 'bottom-left corner'], ['bm', 'middle of the bottom'], ['br', 'bottom-right corner'],
+  ['tl', 'top-left corner'], ['tr', 'top-right corner']];
+
+function renderAmbStrips() {
+  $('amb-strips').innerHTML = A().strips.map((st, i) => {
+    const color = AMB_COLORS[i % AMB_COLORS.length], sel = i === amb.sel;
+    const pts = st.points.map((p, j) => `
+      <span class="h">${j === 0 ? 'in' : j + 1}</span>
+      <span class="face-name h">${esc(FACE_NAMES[facesOf(p)[0]] || 'In the room')}</span>
+      <input type="number" data-pt="x" data-s="${i}" data-p="${j}" value="${toU(p.x)}" step="${inches() ? 0.5 : 1}" title="From the left wall">
+      <input type="number" data-pt="y" data-s="${i}" data-p="${j}" value="${toU(p.y)}" step="${inches() ? 0.5 : 1}" title="From the TV wall">
+      <input type="number" data-pt="z" data-s="${i}" data-p="${j}" value="${toU(p.z)}" step="${inches() ? 0.5 : 1}" title="From the floor">
+      <button data-amb-pdel="${i}" data-p="${j}" title="Remove">✕</button>`).join('');
+    return `
+    <div class="card ${sel ? 'sel' : ''}">
+      <div class="top">
+        <span class="swatch" style="background:${color}"></span>
+        <input data-sf="name" data-s="${i}" value="${esc(st.name)}" placeholder="Name">
+        <button data-amb-sel="${i}" class="${sel ? 'on' : ''}">${sel ? 'Drawing' : 'Draw'}</button>
+        <button data-amb-chase="${i}" title="Lights this strip's first LED green and last red, with a dot running from one to the other">Find its ends</button>
+        <button data-amb-del="${i}">Delete</button>
+      </div>
+      <div class="grid3">
+        <div><label>WLED address</label><input data-sf="host" data-s="${i}" value="${esc(st.host)}" placeholder="192.168.1.50" spellcheck="false"></div>
+        <div><label>Its first LED on that WLED (0 = the start)</label><input type="number" data-sf="start" data-s="${i}" value="${st.start}" min="0" step="1"></div>
+        <div><label>LEDs</label><input type="number" data-sf="count" data-s="${i}" value="${st.count}" min="1" step="1"></div>
+      </div>
+      <div class="stats" data-amb-stats="${i}"></div>
+      <div class="inline wrap">
+        <button data-amb-tv="${i}">Run it round the TV</button>
+        <span style="color:var(--dim);font-size:13px">from the</span>
+        <select data-amb-tv-start="${i}">${TV_STARTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+        <select data-amb-tv-dir="${i}"><option value="cw">clockwise</option><option value="ccw">anticlockwise</option></select>
+        <span style="color:var(--dim);font-size:12px">(as seen from the seat)</span>
+      </div>
+      <div class="inline wrap" style="margin-top:6px">
+        <button data-amb-rev="${i}" title="The other end is the data input">Reverse</button>
+        <button data-amb-clear="${i}">Clear path</button>
+      </div>
+      <details class="points" data-amb-points="${i}" ${amb.openPoints === i ? 'open' : ''}>
+        <summary>Points (${st.points.length}): ${inches() ? 'inches' : 'cm'} from the left wall, the TV wall and the floor</summary>
+        <div class="pts">${pts || '<span></span><span class="h">No points yet: click in the room above.</span>'}</div>
+      </details>
+    </div>`;
+  }).join('') || '<div class="empty">No strips yet. Add one, then click in the room above to draw its path.</div>';
+  renderAmbStats();
+}
+
+function renderAmbStats() {
+  A().strips.forEach((st, i) => {
+    const el = document.querySelector(`[data-amb-stats="${i}"]`);
+    if (!el) return;
+    const prev = amb.preview && amb.preview.strips[i];
+    const err = amb.status && amb.status.strips && amb.status.strips[i] && amb.status.strips[i].error;
+    const pts = st.points;
+    let air = false;
+    for (let j = 1; j < pts.length; j++) if (!shareFace(pts[j - 1], pts[j])) air = true;
+    el.innerHTML = (pts.length < 2 ? 'Draw its path: at least two points.' : prev
+      ? `${lenText(prev.length)} long, LEDs ${st.start}–${st.start + st.count - 1}` +
+        (prev.length > 0 ? ` · ${Math.round(st.count / (prev.length / 100))} LEDs/m` : '') : '') +
+      (air ? '<span class="bad"> · part of its path runs through the air: add a point on the surface in between</span>' : '') +
+      (err ? `<span class="bad"> · ${esc(err)}</span>` : '');
+  });
+}
+
+function addStrip() {
+  const prev = A().strips[A().strips.length - 1];
+  A().strips.push({name: 'Strip ' + (A().strips.length + 1), host: prev ? prev.host : '',
+    start: prev ? prev.start + prev.count : 0, count: 60, points: []});
+  amb.sel = A().strips.length - 1;
+}
+
+/** Round the back of the TV, 2 cm in from its edges, ending where it started. */
+function roundTv(start, dir) {
+  const tv = A().tv, i = 2;
+  const l = tv.x - tv.width / 2 + i, r = tv.x + tv.width / 2 - i, b = tv.z - tv.height / 2 + i, t = tv.z + tv.height / 2 - i;
+  const at = (x, z) => ({x: Math.round(x * 2) / 2, y: tv.offset, z: Math.round(z * 2) / 2});
+  // Clockwise as seen from the seat: up the left side, along the top, down the right.
+  let loop = [at(l, b), at(l, t), at(r, t), at(r, b)];
+  const first = {bl: 0, tl: 1, tr: 2, br: 3}[start];
+  if (start === 'bm') loop = [at(tv.x, b), ...loop.slice(0)];
+  else loop = loop.slice(first).concat(loop.slice(0, first));
+  if (dir === 'ccw') loop = [loop[0], ...loop.slice(1).reverse()];
+  return [...loop, loop[0]];
+}
+
+$('amb-add').onclick = () => { addStrip(); ambChanged(true); };
+
+$('amb-strips').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const ds = b.dataset, st = i => A().strips[+i];
+  if (ds.ambSel !== undefined) { amb.sel = +ds.ambSel; renderAmbStrips(); renderStage(); return; }
+  if (ds.ambChase !== undefined) {
+    showResult($('amb-result'), await post('/api/ambilight/test', {config: A(), pattern: 'chase', strip: +ds.ambChase}));
+    setTimeout(pollAmbilight, 500);
+    return;
+  }
+  if (ds.ambDel !== undefined) {
+    if (!confirm(`Delete ${st(ds.ambDel).name}?`)) return;
+    A().strips.splice(+ds.ambDel, 1);
+    amb.sel = Math.max(0, Math.min(amb.sel, A().strips.length - 1));
+  } else if (ds.ambTv !== undefined) {
+    const i = +ds.ambTv;
+    st(i).points = roundTv(document.querySelector(`[data-amb-tv-start="${i}"]`).value,
+      document.querySelector(`[data-amb-tv-dir="${i}"]`).value);
+    amb.sel = i;
+  } else if (ds.ambRev !== undefined) st(ds.ambRev).points.reverse();
+  else if (ds.ambClear !== undefined) st(ds.ambClear).points = [];
+  else if (ds.ambPdel !== undefined) { st(ds.ambPdel).points.splice(+ds.p, 1); amb.openPoints = +ds.ambPdel; }
+  else return;
+  ambChanged(true);
+});
+
+$('amb-strips').addEventListener('toggle', e => {
+  const d = e.target.dataset && e.target.dataset.ambPoints;
+  if (d !== undefined) amb.openPoints = e.target.open ? +d : (amb.openPoints === +d ? null : amb.openPoints);
+}, true);
+
+$('amb-strips').addEventListener('input', e => {
+  const ds = e.target.dataset;
+  if (ds.sf) {
+    const st = A().strips[+ds.s];
+    st[ds.sf] = ds.sf === 'start' || ds.sf === 'count' ? Math.max(ds.sf === 'count' ? 1 : 0, parseInt(e.target.value, 10) || 0)
+      : e.target.value;
+    if (ds.sf === 'name') renderStage();
+  } else if (ds.pt) {
+    const v = parseFloat(e.target.value);
+    if (isNaN(v)) return;
+    const r = room(), max = {x: r.width, y: r.depth, z: r.height}[ds.pt];
+    A().strips[+ds.s].points[+ds.p][ds.pt] = Math.max(0, Math.min(max, fromU(v)));
+    renderStage();
+  } else return;
+  ambChanged(false);
+});
+
+// ------------------------------------------------------- room, TV, tuning
+
+$('ambilight').addEventListener('input', e => {
+  const path = e.target.dataset && e.target.dataset.amb;
+  if (!path) return;
+  const v = parseFloat(e.target.value);
+  if (isNaN(v)) return;
+  if (path.startsWith('room.')) resizeRoom(path.slice(5), fromU(v));
+  else if (path.startsWith('tv.')) changeTv(() => setPath(A(), path, fromU(v)));
+  else setPath(A(), path, LENGTHS.has(path) ? fromU(v) : v);
+  if (path === 'tv.width' || path === 'tv.height') $('amb-tv-diag').value = Math.round(Math.hypot(A().tv.width, A().tv.height) / 2.54);
+  if (LENGTHS.has(path)) ambChanged(false);
+});
+
+/** Points on the back of the TV move and stretch with it. */
+function changeTv(change) {
+  const tv = A().tv, on = [];
+  for (const st of A().strips) for (const p of st.points) {
+    if (facesOf(p).includes('tv')) on.push([p, (p.x - tv.x) / tv.width, (p.z - tv.z) / tv.height]);
+  }
+  change();
+  for (const [p, u, w] of on) {
+    p.x = Math.round((tv.x + u * tv.width) * 2) / 2;
+    p.z = Math.round((tv.z + w * tv.height) * 2) / 2;
+    p.y = tv.offset;
+  }
+}
+
+/** Points on the far wall (or right wall, or ceiling) stay on it when the room changes size. */
+function resizeRoom(key, cm) {
+  const r = room(), old = r[key], axis = {width: 'x', depth: 'y', height: 'z'}[key];
+  if (!(cm > 0)) return;
+  r[key] = cm;
+  for (const st of A().strips) for (const p of st.points) {
+    if (Math.abs(p[axis] - old) < 0.5) p[axis] = cm;
+    else p[axis] = Math.min(p[axis], cm);
+  }
+}
+
+$('amb-tv-diag').oninput = () => {
+  const d = parseFloat($('amb-tv-diag').value);
+  if (!(d > 0)) return;
+  const tv = A().tv, ratio = tv.width / tv.height || 16 / 9;
+  changeTv(() => {
+    tv.height = Math.round(d * 2.54 / Math.sqrt(1 + ratio * ratio) * 10) / 10;
+    tv.width = Math.round(tv.height * ratio * 10) / 10;
+  });
+  $('amb-tv-width').value = toU(tv.width);
+  $('amb-tv-height').value = toU(tv.height);
+  ambChanged(false);
+};
+
+$('amb-units').onchange = () => { A().units = $('amb-units').value; renderAmbInputs(); renderAmbStrips(); renderStage(); };
+$('amb-auto').onchange = () => { A().autoStart = $('amb-auto').checked; };
+$('amb-bars').onchange = () => { A().blackBars = $('amb-bars').checked; };
+$('amb-fps').onchange = () => { A().fps = parseInt($('amb-fps').value, 10); };
+
+/** Something in the layout changed: redraw, re-ask the TV where the LEDs fall, and mark unsaved. */
+function ambChanged(structural) {
+  if (structural) renderAmbStrips();
+  renderStage();
+  schedulePreview(150);
+  markDirty();
+}
+
+function schedulePreview(ms) {
+  clearTimeout(amb.timer);
+  amb.timer = setTimeout(async () => {
+    try {
+      const r = await post('/api/ambilight/preview', {config: A()});
+      if (r.error) throw new Error(r.error);
+      amb.preview = r;
+      renderStage();
+      renderAmbStats();
+    } catch (err) { /* the drawing stays; the stats say nothing new */ }
+  }, ms);
+}
+
+// --------------------------------------------------------------- status
+
+async function pollAmbilight() {
+  if (document.hidden || !draft) return;
+  let st;
+  try { st = await (await fetch('/api/ambilight')).json(); } catch (err) { return; }
+  amb.status = st;
+  const since = st.since ? ` <span style="color:var(--dim)">(since ${esc(new Date(st.since).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}))})</span>` : '';
+  const cap = st.capture;
+  let text = {
+    off: () => 'Off.',
+    paused: () => 'On, waiting for the screen to come on.',
+    test: () => (st.pattern === 'chase' ? `Finding the ends of ${esc((A().strips[st.strip] || {}).name || 'a strip')}: first LED green, last red.`
+      : 'Test pattern: the picture\'s border in rainbow colours, as on the TV above.') + ' For a minute, then back to before.',
+    on: () => 'On: following the screen' + (cap ? ` · picture average <span class="swatch" style="background:${esc(cap.average)};vertical-align:-2px"></span>` +
+      ` · ${cap.fps} picture change${cap.fps === 1 ? '' : 's'} a second` +
+      (cap.crop[1] > 0 ? ` · letterbox bars skipped (${Math.round(cap.crop[1] / cap.height * 100)}% top and bottom)` : '') +
+      (cap.crop[0] > 0 ? ` · pillarbox bars skipped (${Math.round(cap.crop[0] / cap.width * 100)}% each side)` : '') : ''),
+  }[st.state]() + since;
+  if (cap && cap.black) text += '<span class="why">The picture has been black for a while. If something is playing, it\'s protected video, which can\'t be captured: the strips stay dark for it.</span>';
+  if (st.error) text += `<span class="bad">${esc(st.error)}</span>`;
+  for (const s of st.strips || []) if (s.error) text += `<span class="bad">${esc(s.name)}: ${esc(s.error)}</span>`;
+  $('amb-now').innerHTML = text;
+  $('amb-start').textContent = st.state === 'off' ? 'Start on the TV' : 'Stop';
+  renderAmbStats();
+  if (amb.colors === 'live') renderStage();
+}
+
+$('amb-start').onclick = async () => {
+  const on = amb.status && amb.status.state !== 'off';
+  const r = await post('/api/ambilight/' + (on ? 'stop' : 'start'), {});
+  if (r.ok && !on && !$('save').disabled) r.message += ', with the saved settings: save to use the changes here';
+  showResult($('amb-result'), r);
+  setTimeout(pollAmbilight, 1500);
+};
+
+$('amb-test').onclick = async () => {
+  showResult($('amb-result'), await post('/api/ambilight/test', {config: A(), pattern: 'hue'}));
+  setTimeout(pollAmbilight, 500);
+};
+
+// ----------------------------------------------------------------- backup
+
+let restoreFile = null;   // the backup picked, until restored or cancelled
+
+function renderUndo() {
+  const u = state.restoreUndo;
+  $('restore-undo-wrap').hidden = !u;
+  if (u) $('restore-undo-when').textContent = 'Puts back the settings from just before it (' +
+    new Date(u.at).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}) + ').';
+}
+
+$('backup-download').onclick = async () => {
+  try {
+    const r = await fetch('/api/backup');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const text = await r.text();
+    const day = new Date().toISOString().slice(0, 10);
+    const name = `launcher-${(state.device || 'shield').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${day}.json`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], {type: 'application/json'}));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    showResult($('backup-result'), {ok: true, message: 'Saved ' + name + ($('save').disabled ? ''
+      : '. It has the saved settings, not the unsaved changes on this page')});
+  } catch (err) {
+    showResult($('backup-result'), {ok: false, message: 'Could not make a backup: ' + err.message});
+  }
+};
+
+$('backup-restore').onclick = () => { $('backup-file').value = ''; $('backup-file').click(); };
+
+$('backup-file').onchange = async () => {
+  const f = $('backup-file').files[0];
+  if (!f) return;
+  let b;
+  try { b = JSON.parse(await f.text()); } catch (err) {
+    showResult($('backup-result'), {ok: false, message: f.name + ' isn\'t a backup: ' + err.message});
+    return;
+  }
+  if (!b || b.app !== 'dev.alex.minlauncher' || !b.settings) {
+    showResult($('backup-result'), {ok: false, message: f.name + ' isn\'t a launcher backup'});
+    return;
+  }
+  restoreFile = b;
+  $('backup-result').textContent = '';
+  const when = b.createdAt ? new Date(b.createdAt).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}) : 'an unknown date';
+  const other = b.device && b.device !== state.device;
+  $('restore-what').innerHTML = `<code>${esc(f.name)}</code>: from <b>${esc(b.device || 'a SHIELD')}</b>, ${esc(when)}.` +
+    (other ? `<span class="why">That's a different SHIELD from this one (${esc(state.device)}): the ambilight starts unticked, since its layout belongs to that room.</span>` : '') +
+    '<span class="why">Each part ticked replaces this SHIELD\'s; settings the backup doesn\'t have go back to their defaults.</span>';
+  $('restore-groups').innerHTML = state.backupGroups.map(g => {
+    const n = g.keys.filter(k => k in b.settings).length;
+    // Another room's ambilight layout is almost never wanted here.
+    const on = !(other && g.id === 'ambilight');
+    return `<label class="check"><input type="checkbox" data-restore-group="${esc(g.id)}" ${on ? 'checked' : ''}>
+      ${esc(g.label)} <span style="color:var(--dim)">(${n ? n + ' setting' + (n === 1 ? '' : 's') : 'all defaults'})</span></label>`;
+  }).join('');
+  $('restore-panel').hidden = false;
+};
+
+$('restore-cancel').onclick = () => { restoreFile = null; $('restore-panel').hidden = true; };
+
+$('restore-go').onclick = async () => {
+  const groups = [...document.querySelectorAll('[data-restore-group]')].filter(c => c.checked).map(c => c.dataset.restoreGroup);
+  if (!restoreFile || !groups.length) return;
+  if (!$('save').disabled && !confirm('Restoring replaces this page\'s unsaved changes. Restore anyway?')) return;
+  const r = await post('/api/restore', {backup: restoreFile, groups});
+  if (r.error) { showResult($('backup-result'), {ok: false, message: r.error}); return; }
+  showResult($('backup-result'), r);
+  if (!r.ok) return;
+  restoreFile = null;
+  $('restore-panel').hidden = true;
+  await load();
+  markSaved('Restored ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+};
+
+$('restore-undo').onclick = async () => {
+  if (!$('save').disabled && !confirm('Undoing replaces this page\'s unsaved changes. Undo anyway?')) return;
+  const r = await post('/api/restore/undo', {});
+  if (r.error) { showResult($('backup-result'), {ok: false, message: r.error}); return; }
+  showResult($('backup-result'), r);
+  if (r.ok) { await load(); markSaved('Restore undone'); }
+};
+
 $('radar-show').onclick = async () => {
   showResult($('radar-result'), await post('/api/radar/show', {}));
 };
@@ -1296,6 +2208,7 @@ $('save').onclick = async () => {
     digestTime: $('calendar-digest-time').value,
     visualizerHold: $('visualizer-hold').checked,
     visualizer: visualizerFields(),
+    ambilight: draft.ambilight,
     radarShown: $('radar-shown').checked,
     radarSource: $('radar-source').value.trim(),
     alertsShown: $('alerts-shown').checked,
@@ -1334,6 +2247,8 @@ loadIcons().catch(() => {}).then(load).catch(err => { $('status').textContent = 
 loadPresetNames();
 renderVisualizerNow();
 setInterval(renderVisualizerNow, 5000);
+setInterval(pollAmbilight, 1500);
+pollAmbilight();
 </script>
 </body>
 </html>
