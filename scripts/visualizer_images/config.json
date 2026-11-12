@@ -1,7 +1,13 @@
 {
-  "_comment": "Source images for the music visualizer (generate_visualizer_images.py). Every prompt gets `style` appended; the black background is keyed out to transparency afterwards, so only the glowing subject melts into the presets. Change a seed to re-roll one image.",
+  "_comment": "Source images for the music visualizer (generate_visualizer_images.py). Every prompt gets `style` appended; the black background is keyed out to transparency afterwards, so only the glowing subject melts into the presets. Change a seed to re-roll one image. An image with \"style\": \"<name>\" uses that entry of `styles` (style and negative) instead.",
   "style": "Centered single subject, glowing with its own light, vivid saturated colors, high contrast, isolated on a pure solid black background, nothing else in the frame, generous black margin around the subject, no text, no watermark, no border.",
   "negative": "text, letters, watermark, signature, frame, border, gray background, gradient background, floor, ground, horizon, multiple subjects, blurry, low quality",
+  "styles": {
+    "intricate": {
+      "style": "Intricate, densely detailed surreal composition filling the frame, many small elements swirling around the central figure, chrome and glass reflections, crackling lightning and nebula light, deep pure black background between the elements, vivid saturated colors, high contrast, no text, no watermark, no border.",
+      "negative": "text, letters, watermark, signature, frame, border, gray background, gradient background, flat, simple, minimalist, empty, blurry, low quality"
+    }
+  },
   "width": 1344,
   "height": 768,
   "images": [
@@ -64,6 +70,86 @@
       "name": "neon_windmill",
       "seed": 112,
       "prompt": "An old prairie windmill outlined in glowing neon light, warm amber blades and a teal tower."
+    },
+    {
+      "name": "phoenix",
+      "seed": 113,
+      "prompt": "A phoenix rising with wings spread wide, feathers of living flame in crimson, orange and gold."
+    },
+    {
+      "name": "star_whale",
+      "seed": 114,
+      "prompt": "A humpback whale made of glowing starlight and constellation lines, deep blue and silver, swimming upward."
+    },
+    {
+      "name": "neon_tiger",
+      "seed": 115,
+      "prompt": "A tiger's face drawn in glowing neon lines, orange stripes and electric violet outlines, intense eyes."
+    },
+    {
+      "name": "aurora_moon",
+      "seed": 116,
+      "prompt": "A crescent moon wrapped in flowing ribbons of green and violet aurora light."
+    },
+    {
+      "name": "crystal_tree",
+      "seed": 117,
+      "prompt": "A small tree with a trunk and branches of glowing crystal, blossoms of soft pink and cyan light."
+    },
+    {
+      "name": "dna_helix",
+      "seed": 118,
+      "prompt": "A DNA double helix of glowing beads and light, twisting diagonally, cyan and magenta."
+    },
+    {
+      "name": "circuit_owl",
+      "seed": 119,
+      "prompt": "An owl whose feathers are glowing circuit board traces in teal and gold, bright amber eyes."
+    },
+    {
+      "name": "neon_guitar",
+      "seed": 120,
+      "prompt": "A vintage electric guitar outlined in glowing neon light, hot pink body and electric blue neck."
+    },
+    {
+      "name": "rainbow_vinyl",
+      "seed": 121,
+      "prompt": "A vinyl record seen at an angle, its grooves shimmering with rainbow light, a glowing gold label."
+    },
+    {
+      "name": "spiral_galaxy",
+      "seed": 122,
+      "prompt": "A spiral galaxy seen face-on, glowing arms of blue and violet stars around a bright golden core."
+    },
+    {
+      "name": "galaxy_skull",
+      "seed": 123,
+      "style": "intricate",
+      "prompt": "A chrome skull in profile with a glowing spiral galaxy inside its cranium, surrounded by melting pocket watches, floating realistic eyes, shattered rock shards and purple and blue lightning bursting outward."
+    },
+    {
+      "name": "clockwork_heart",
+      "seed": 124,
+      "style": "intricate",
+      "prompt": "An anatomical heart built from brass gears, tiny clock faces and glass tubes of glowing red light, its arteries unravelling into golden circuitry and vines, orbited by floating keys, moths and sparks."
+    },
+    {
+      "name": "dream_eye",
+      "seed": 125,
+      "style": "intricate",
+      "prompt": "A giant eye whose iris is an ornate clock face, lashes of crackling lightning, surrounded by spiralling staircases, tiny floating islands with waterfalls, falling feathers and drifting planets."
+    },
+    {
+      "name": "filigree_octopus",
+      "seed": 126,
+      "style": "intricate",
+      "prompt": "An octopus of ornate gold filigree and bioluminescent ink, tentacles curling around sunken pocket watches, pearls, glowing coral, keys and schools of tiny luminous fish."
+    },
+    {
+      "name": "constellation_ouroboros",
+      "seed": 127,
+      "style": "intricate",
+      "prompt": "A serpent made of constellations biting its own tail, coiled around a glowing world tree, with orbiting planets, glowing runes, shattered crystal shards and drifting cherry blossom petals."
     }
   ]
 }

@@ -56,8 +56,10 @@ LO, HI = 0.04, 0.32
 
 def render(comfy, cfg, item):
     wf = load_workflow("flux2_klein_4b_t2i")
-    wf["74"]["inputs"]["text"] = f"{item['prompt']} {cfg['style']}"
-    wf["67"]["inputs"]["text"] = cfg["negative"]
+    # An image can name its own style (one of cfg["styles"]) in place of the shared one.
+    style = cfg["styles"][item["style"]] if "style" in item else {"style": cfg["style"], "negative": cfg["negative"]}
+    wf["74"]["inputs"]["text"] = f"{item['prompt']} {style['style']}"
+    wf["67"]["inputs"]["text"] = style["negative"]
     wf["73"]["inputs"]["noise_seed"] = item["seed"]
     for node in ("62", "66"):
         wf[node]["inputs"]["width"] = cfg["width"]
