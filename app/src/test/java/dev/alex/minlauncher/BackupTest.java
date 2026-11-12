@@ -79,7 +79,7 @@ public class BackupTest {
     @Test
     public void onlyThePickedPartsAreRestored() throws JSONException {
         Map<String, Object> c = Backup.read(roundTrip(prefs()), Collections.singletonList("ambilight"));
-        assertEquals(Collections.singleton(Store.KEY_AMBILIGHT), c.keySet());
+        assertEquals(new HashSet<>(java.util.Arrays.asList(Store.KEY_AMBILIGHT, Store.KEY_MODE_LIGHTS)), c.keySet());
     }
 
     @Test

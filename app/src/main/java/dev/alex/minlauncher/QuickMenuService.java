@@ -137,6 +137,7 @@ public class QuickMenuService extends AccessibilityService {
         web = new WebConfigServer(this, store, () -> handler.post(radar::force),
                 () -> handler.post(alerts::test), () -> handler.post(reminders::test),
                 () -> handler.post(reminders::testDigest), (playlist, preset) -> handler.post(() -> visualizer.show(playlist, preset)));
+        web.setScreenshots(() -> Screenshot.png(this));
         web.start();
         IntentFilter screen = new IntentFilter(Intent.ACTION_SCREEN_OFF);
         screen.addAction(Intent.ACTION_SCREEN_ON);

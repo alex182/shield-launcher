@@ -103,6 +103,7 @@ public class AmbilightService extends Service {
         @Override public void onReceive(Context c, Intent i) {
             if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) worker.post(() -> stopCapture(true));
             else if (wantCapture && projection != null) worker.post(AmbilightService.this::startCapture);
+            followLights();
         }
     };
     private final Runnable endTest = this::endTest;
@@ -253,6 +254,7 @@ public class AmbilightService extends Service {
         }
         lastError = "";
         wantCapture = true;
+        followLights();
         JSONObject c = store.ambilight();
         boolean on = isInteractive();
         worker.post(() -> {
@@ -303,13 +305,14 @@ public class AmbilightService extends Service {
 
     private void projectionStopped() {
         projection = null;
-        if (mode == Mode.TEST) { wantCapture = false; return; }
+        if (mode == Mode.TEST) { wantCapture = false; followLights(); return; }
         shutDown();
     }
 
     private void shutDown() {
         main.removeCallbacks(endTest);
         wantCapture = false;
+        followLights();
         worker.post(() -> {
             stopCapture(false);
             mode = Mode.OFF;
@@ -347,6 +350,15 @@ public class AmbilightService extends Service {
     public IBinder onBind(Intent intent) { return null; }
 
     @SuppressWarnings("deprecation")
+    /**
+     * The room lights follow the ambilight while it shows the screen: on
+     * and the screen on. The screen going off ends it for them, as for the
+     * visualizer. Main thread.
+     */
+    private void followLights() {
+        ModeLightsController.get(this).set(ModeLights.AMBILIGHT, wantCapture && isInteractive());
+    }
+
     private boolean isInteractive() {
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH ? pm.isInteractive() : pm.isScreenOn();

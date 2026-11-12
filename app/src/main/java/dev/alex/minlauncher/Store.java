@@ -55,6 +55,8 @@ final class Store {
     static final String KEY_VISUALIZER_SHOWING = "visualizer_showing"; // the preset on screen now, "" when closed
     static final String KEY_VISUALIZER_IMAGES = "visualizer_images";   // source images mixed in or not, toggled on the TV or the page
     static final String KEY_AMBILIGHT = "ambilight";           // JSON, see AmbilightConfig
+    static final String KEY_MODE_LIGHTS = "mode_lights";       // JSON, see ModeLights: room lights for the visualizer and ambilight
+    static final String KEY_MODE_LIGHTS_STATUS = "mode_lights_status";   // JSON {mode: {at, text, error}}, written by ModeLightsController
     static final String KEY_RADAR_SHOWN = "radar_shown";       // radar pop-up while it rains
     static final String KEY_RADAR_SOURCE = "radar_source";     // image URL or camera entity
     static final String KEY_RADAR_LIGHTNING_DISTANCE = "radar_lightning_distance";   // entity ids, "" = off
@@ -336,6 +338,25 @@ final class Store {
 
     void setAmbilight(JSONObject settings) {
         prefs.edit().putString(KEY_AMBILIGHT, AmbilightConfig.normalize(settings).toString()).apply();
+    }
+
+    /** Lights switched as the visualizer or the ambilight starts and ends; see {@link ModeLights}. */
+    JSONObject modeLights() {
+        try { return ModeLights.normalize(new JSONObject(prefs.getString(KEY_MODE_LIGHTS, "{}"))); }
+        catch (JSONException e) { return ModeLights.normalize(null); }
+    }
+
+    void setModeLights(JSONObject settings) {
+        prefs.edit().putString(KEY_MODE_LIGHTS, ModeLights.normalize(settings).toString()).apply();
+    }
+
+    JSONObject modeLightsStatus() {
+        try { return new JSONObject(prefs.getString(KEY_MODE_LIGHTS_STATUS, "{}")); }
+        catch (JSONException e) { return new JSONObject(); }
+    }
+
+    synchronized void setModeLightsStatus(String mode, JSONObject status) throws JSONException {
+        prefs.edit().putString(KEY_MODE_LIGHTS_STATUS, modeLightsStatus().put(mode, status).toString()).apply();
     }
 
     boolean radarShown() { return prefs.getBoolean(KEY_RADAR_SHOWN, true); }
