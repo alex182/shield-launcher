@@ -1,0 +1,69 @@
+{
+  "_comment": "Source images for the music visualizer (generate_visualizer_images.py). Every prompt gets `style` appended; the black background is keyed out to transparency afterwards, so only the glowing subject melts into the presets. Change a seed to re-roll one image.",
+  "style": "Centered single subject, glowing with its own light, vivid saturated colors, high contrast, isolated on a pure solid black background, nothing else in the frame, generous black margin around the subject, no text, no watermark, no border.",
+  "negative": "text, letters, watermark, signature, frame, border, gray background, gradient background, floor, ground, horizon, multiple subjects, blurry, low quality",
+  "width": 1344,
+  "height": 768,
+  "images": [
+    {
+      "name": "nebula_eye",
+      "seed": 201,
+      "prompt": "A single realistic human eye seen from the front, with eyelids and lashes, its iris a swirling nebula of magenta, teal and gold stars around a black pupil."
+    },
+    {
+      "name": "jellyfish",
+      "seed": 102,
+      "prompt": "A bioluminescent jellyfish with long trailing tentacles, glowing cyan and violet, translucent bell."
+    },
+    {
+      "name": "neon_lotus",
+      "seed": 103,
+      "prompt": "A lotus flower drawn in glowing neon tubes, pink petals and electric blue outlines."
+    },
+    {
+      "name": "fire_koi",
+      "seed": 104,
+      "prompt": "A koi fish made of liquid fire and molten gold, curling as it swims, embers trailing from its fins."
+    },
+    {
+      "name": "mandala",
+      "seed": 105,
+      "prompt": "A symmetrical mandala of thin glowing geometric lines, rainbow spectrum colors, intricate and radial."
+    },
+    {
+      "name": "crystal_skull",
+      "seed": 106,
+      "prompt": "A human skull carved from clear crystal, splitting light into rainbow prism rays."
+    },
+    {
+      "name": "hummingbird",
+      "seed": 107,
+      "prompt": "A hummingbird mid-flight with iridescent emerald and violet feathers, wings blurred with light."
+    },
+    {
+      "name": "ringed_planet",
+      "seed": 108,
+      "prompt": "A ringed gas giant planet with bands of orange and turquoise, glowing rings tilted toward the viewer."
+    },
+    {
+      "name": "stained_butterfly",
+      "seed": 109,
+      "prompt": "A butterfly with stained glass wings lit from behind, jewel-toned panes of ruby, sapphire and amber."
+    },
+    {
+      "name": "psychedelic_sun",
+      "seed": 110,
+      "prompt": "A retro psychedelic sun with a calm smiling face and wavy rays in orange, magenta and yellow."
+    },
+    {
+      "name": "glowing_orb_hands",
+      "seed": 111,
+      "prompt": "Two open hands cupping a glowing orb of swirling plasma, light spilling between the fingers."
+    },
+    {
+      "name": "neon_windmill",
+      "seed": 112,
+      "prompt": "An old prairie windmill outlined in glowing neon light, warm amber blades and a teal tower."
+    }
+  ]
+}

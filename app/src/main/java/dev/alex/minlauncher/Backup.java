@@ -59,7 +59,7 @@ final class Backup {
                     Store.KEY_SLEEP_SHOWN, Type.BOOL),
             new Group("visualizer", "Music visualizer and liked presets",
                     Store.KEY_VISUALIZER_HOLD, Type.BOOL, Store.KEY_VISUALIZER, Type.STRING,
-                    Store.KEY_VISUALIZER_LIKED, Type.STRING),
+                    Store.KEY_VISUALIZER_LIKED, Type.STRING, Store.KEY_VISUALIZER_IMAGES, Type.BOOL),
             new Group("ambilight", "Ambilight: room, TV, strips and picture",
                     Store.KEY_AMBILIGHT, Type.STRING),
             new Group("calendar", "Cameras, calendar and reminders",
