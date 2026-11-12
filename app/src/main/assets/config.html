@@ -439,6 +439,11 @@
       <div><label for="amb-smoothing">Smoothing (ms)</label><input type="number" id="amb-smoothing" data-amb="smoothingMs" min="0" max="2000" step="10"></div>
       <div><label for="amb-edge">How far into the picture (%)</label><input type="number" id="amb-edge" data-amb="edgeDepth" min="2" max="50" step="1"></div>
       <div><label for="amb-inset">Skip the outer edge (%)</label><input type="number" id="amb-inset" data-amb="edgeInset" min="0" max="30" step="1"></div>
+      <div><label for="amb-colour-from">Each LED's colour</label>
+        <select id="amb-colour-from">
+          <option value="vivid">Most vivid colour in its patch</option>
+          <option value="mean">Average of its patch</option>
+        </select></div>
       <div><label for="amb-fps">Updates a second</label>
         <select id="amb-fps"><option>15</option><option>20</option><option>25</option><option>30</option><option>45</option><option>60</option></select></div>
     </div>
@@ -446,10 +451,14 @@
       automatically from what's on screen</label>
     <div class="now" id="amb-edge-now" style="margin-top:6px" hidden></div>
     <label class="check"><input type="checkbox" id="amb-bars"> Skip black bars (letterboxed films light the room from the picture, not the bars)</label>
-    <p class="hint" style="margin:6px 0 0">Each LED averages a patch of the picture by the edge in its direction. "How far
+    <p class="hint" style="margin:6px 0 0">Each LED takes its colour from a patch of the picture by the edge in its
+      direction: by default the most vivid colour in it (the strongest hue, averaged over just those pixels), so a busy
+      picture of thin streaks in several colours lights the room in those colours instead of their muddy average; a grey
+      or dark patch uses its average. "How far
       into the picture" is the patch's depth; "Skip the outer edge" starts it further in, past bright borders, menus or
-      logos at the very edge. Pale, washed-out colour is usually gamma instead: try 2.2 (WS2812 strips are linear, the
-      picture isn't).</p>
+      logos at the very edge. Gamma trades the two ways colour goes wrong: pale and washed out means it's too low, dim and
+      near black on all but the brightest pictures means it's too high. 1.6 to 2.2 suits most rooms (WS2812 strips are
+      linear, the picture isn't); much past 2.2 and mid-tones all but vanish.</p>
   </section>
 
   <section id="watching">
@@ -1851,6 +1860,7 @@ function loadAmbilight() {
   $('amb-fps').value = String(A().fps);
   $('amb-bars').checked = A().blackBars;
   $('amb-auto-edge').checked = A().autoEdge;
+  $('amb-colour-from').value = A().colourFrom;
   showAutoEdge();
   renderAmbInputs();
   renderAmbStrips();
@@ -2447,6 +2457,7 @@ $('amb-tv-diag').oninput = () => {
 $('amb-units').onchange = () => { A().units = $('amb-units').value; renderAmbInputs(); renderAmbStrips(); renderStage(); };
 $('amb-auto').onchange = () => { A().autoStart = $('amb-auto').checked; };
 $('amb-bars').onchange = () => { A().blackBars = $('amb-bars').checked; };
+$('amb-colour-from').onchange = () => { A().colourFrom = $('amb-colour-from').value; };
 $('amb-auto-edge').onchange = () => { A().autoEdge = $('amb-auto-edge').checked; showAutoEdge(); };
 
 /** Auto: the two fields are the starting point only, and the TV says what it's using now. */

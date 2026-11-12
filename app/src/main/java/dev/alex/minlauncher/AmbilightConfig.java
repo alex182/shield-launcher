@@ -15,7 +15,8 @@ import java.util.List;
  *
  * <pre>
  * {autoStart, fps, units: "in"|"cm",
- *  brightness, saturation, gamma, smoothingMs, edgeDepth, edgeInset, autoEdge, blackBars,
+ *  brightness, saturation, gamma, smoothingMs, edgeDepth, edgeInset, autoEdge,
+ *  colourFrom: "vivid"|"mean", blackBars,
  *  room: {width, depth, height},
  *  tv: {x, z, offset, width, height},
  *  strips: [{name, host, start, count, points: [{x, y, z}, …]}, …]}
@@ -85,6 +86,7 @@ final class AmbilightConfig {
                     .put("edgeInset", (int) clamp(in.optInt("edgeInset", d.edgeInset), 0, 30))
                     .put("blackBars", in.optBoolean("blackBars", true))
                     .put("autoEdge", in.optBoolean("autoEdge", false))
+                    .put("colourFrom", "mean".equals(in.optString("colourFrom")) ? "mean" : "vivid")
                     .put("room", room)
                     .put("tv", tv)
                     .put("strips", strips);

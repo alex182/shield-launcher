@@ -232,6 +232,86 @@ final class Ambilight {
         out[2] = (b[d] - b[bq] - b[c] + b[a]) / n;
     }
 
+    // ---------------------------------------------------------- vivid colour
+
+    /** Hue bins for {@link #dominant}: 30° each. */
+    static final int HUE_BINS = 12;
+    /** A patch whose pixels average less colourfulness (max − min, 0..255) than this is grey: use the mean. */
+    static final int GREY_CHROMA = 12;
+    /** Boxes bigger than this many pixels are sampled every other pixel and row. */
+    private static final int FULL_SAMPLE = 1200;
+
+    /**
+     * Each pixel's hue bin and chroma (max − min channel), once a frame, for
+     * {@link #dominant}: {@code bin} and {@code chroma} hold w × h entries.
+     */
+    static void vivid(byte[] rgba, int w, int h, int stride, byte[] bin, byte[] chroma) {
+        for (int y = 0, i = 0; y < h; y++) {
+            for (int x = 0, p = y * stride; x < w; x++, p += 4, i++) {
+                int r = rgba[p] & 0xff, g = rgba[p + 1] & 0xff, b = rgba[p + 2] & 0xff;
+                int mx = Math.max(r, Math.max(g, b)), mn = Math.min(r, Math.min(g, b)), c = mx - mn;
+                chroma[i] = (byte) c;
+                if (c == 0) { bin[i] = 0; continue; }
+                float hue;   // 0..6
+                if (mx == r) hue = (g - b) / (float) c;
+                else if (mx == g) hue = (b - r) / (float) c + 2;
+                else hue = (r - g) / (float) c + 4;
+                if (hue < 0) hue += 6;
+                bin[i] = (byte) ((int) (hue * HUE_BINS / 6) % HUE_BINS);
+            }
+        }
+    }
+
+    /**
+     * The box's most vivid colour into {@code out} (0..255): the hue with
+     * the most colour in it (pixels weighted by chroma², so strong colour
+     * outweighs a lot of faint), and the chroma-weighted average of the
+     * pixels of that hue and its two neighbours. A box of thin streaks in
+     * several colours then shows one of them, where the plain mean would be
+     * a muddy grey. Its brightness is pulled partway (square root) towards
+     * the box's own, so a small bright thing in a dark box stays dim.
+     * False, with {@code out} untouched, when the box is grey (no hue to
+     * speak of): use the mean.
+     */
+    static boolean dominant(byte[] rgba, int w, int stride, byte[] bin, byte[] chroma, int[] box,
+            double[] scratch, float[] out) {
+        java.util.Arrays.fill(scratch, 0);   // per bin: weight, r, g, b
+        int step = (box[2] - box[0]) * (box[3] - box[1]) > FULL_SAMPLE ? 2 : 1;
+        long chromaSum = 0;
+        int n = 0;
+        double meanMax = 0;
+        for (int y = box[1]; y < box[3]; y += step) {
+            for (int x = box[0]; x < box[2]; x += step) {
+                int i = y * w + x, p = y * stride + x * 4;
+                int c = chroma[i] & 0xff, r = rgba[p] & 0xff, g = rgba[p + 1] & 0xff, b = rgba[p + 2] & 0xff;
+                chromaSum += c;
+                n++;
+                meanMax += Math.max(r, Math.max(g, b));
+                if (c == 0) continue;
+                double wt = (double) c * c;
+                int k = bin[i] * 4;
+                scratch[k] += wt;
+                scratch[k + 1] += wt * r;
+                scratch[k + 2] += wt * g;
+                scratch[k + 3] += wt * b;
+            }
+        }
+        if (n == 0 || chromaSum < (long) GREY_CHROMA * n) return false;
+        int best = 0;
+        for (int k = 1; k < HUE_BINS; k++) if (scratch[k * 4] > scratch[best * 4]) best = k;
+        double wt = 0, r = 0, g = 0, b = 0;
+        for (int d = -1; d <= 1; d++) {
+            int k = ((best + d + HUE_BINS) % HUE_BINS) * 4;
+            wt += scratch[k]; r += scratch[k + 1]; g += scratch[k + 2]; b += scratch[k + 3];
+        }
+        r /= wt; g /= wt; b /= wt;
+        double domMax = Math.max(r, Math.max(g, b)), scale = domMax <= 0 ? 0 : Math.min(1, Math.sqrt(meanMax / n / domMax));
+        out[0] = (float) (r * scale);
+        out[1] = (float) (g * scale);
+        out[2] = (float) (b * scale);
+        return true;
+    }
+
     // ------------------------------------------------------------ black bars
 
     /**
