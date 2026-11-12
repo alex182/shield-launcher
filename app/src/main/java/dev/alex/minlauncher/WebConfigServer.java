@@ -104,7 +104,9 @@ final class WebConfigServer implements Runnable {
                 length = Integer.parseInt(h.substring(colon + 1).trim());
             }
         }
-        if (length > MAX_BODY) {
+        // The visualizer's source image comes up as raw bytes, bigger than any JSON.
+        boolean image = method.equals("POST") && path.equals("/api/visualizer/image");
+        if (length > (image ? VisualizerImage.MAX_BYTES : MAX_BODY)) {
             send(client, 413, "text/plain", "Too large");
             return;
         }
@@ -133,6 +135,32 @@ final class WebConfigServer implements Runnable {
                 JSONObject o = text.isEmpty() ? new JSONObject() : new JSONObject(text);
                 showVisualizer.show(o.optString("playlist"), o.optString("preset"));
                 sendResult(client, () -> "Showing on the TV");
+            } else if (method.equals("GET") && path.startsWith("/api/visualizer/image/")) {
+                // By id; an id never changes what it names, so it can be cached.
+                byte[] b = VisualizerImage.read(context, path.substring("/api/visualizer/image/".length()));
+                if (b == null) send(client, 404, "text/plain", "No such image");
+                else send(client, 200, VisualizerImage.type(b), b, true);
+            } else if (image) {
+                // Saved at once, not with the page's Save, and picked up by the TV within a second.
+                sendResult(client, () -> {
+                    VisualizerImage.add(context, body);
+                    return "Image added";
+                });
+            } else if (method.equals("POST") && path.equals("/api/visualizer/image/delete")) {
+                VisualizerImage.remove(context, new JSONObject(text).optString("id"));
+                sendResult(client, () -> "Image removed");
+            } else if (method.equals("POST") && path.equals("/api/visualizer/images")) {
+                // Saved at once, not with the page's Save: the TV toggles it too.
+                boolean on = new JSONObject(text).getBoolean("on");
+                store.setVisualizerImages(on);
+                sendResult(client, () -> on ? "Images on" : "Images off");
+            } else if (method.equals("POST") && path.equals("/api/visualizer/image/defaults")) {
+                int n = VisualizerImage.restoreDefaults(context);
+                sendResult(client, () -> n == 0 ? "All the built-in images are already there"
+                        : "Restored " + n + " built-in image" + (n == 1 ? "" : "s"));
+            } else if (method.equals("POST") && path.equals("/api/visualizer/image/clear")) {
+                VisualizerImage.clear(context);
+                sendResult(client, () -> "All images removed");
             } else if (method.equals("POST") && path.equals("/api/visualizer/like")) {
                 // Saved at once, not with the page's Save: the TV likes too.
                 JSONObject o = new JSONObject(text);
@@ -350,6 +378,8 @@ final class WebConfigServer implements Runnable {
                 .put("status", new JSONObject(store.visualizerStatus()))
                 .put("showing", store.visualizerShowing())
                 .put("liked", store.visualizerLiked())
+                .put("images", new JSONArray(VisualizerImage.ids(context)))
+                .put("imagesOn", store.visualizerImages())
                 .put("playing", playing)
                 .put("dumpDenied", AudioSessions.denied(dump));
     }

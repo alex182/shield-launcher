@@ -25,7 +25,7 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`, `VisualizerOverlay`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row); ambilight: `Ambilight` (pure geometry, sampling and packets), `AmbilightConfig` (settings), `AmbilightService` (capture and streaming), `AmbilightActivity` (asks for the capture) |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`, `VisualizerOverlay` + `VisualizerImage`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row); ambilight: `Ambilight` (pure geometry, sampling and packets), `AmbilightConfig` (settings), `AmbilightService` (capture and streaming), `AmbilightActivity` (asks for the capture) |
 | `app/src/test/` | JVM unit tests (`Backgrounds`, `Agenda`, `Alerts`, `Lights`, `TileFlow` wrapping, `Ambilight`); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font), `visualizer/` (butterchurn page and presets) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
@@ -178,6 +178,44 @@ The config page's **Show on the TV now** opens it too.
   them; the page's **Play** buttons open the visualizer on the liked list (from
   one preset, or anywhere) for that showing only (`POST /api/visualizer/show`
   with `playlist`, `preset`; likes go through `POST /api/visualizer/like`).
+- **Source images**: pictures the presets melt and mix. The TV page paints
+  one into butterchurn's feedback frame (`renderer.targetFrameBuffer`) just
+  before each `render()`, so the preset's own warp, zoom and decay carry it
+  off like anything it drew. **Mix images in** turns them on or off
+  straight away, on the config page (`POST /api/visualizer/images` with
+  `on`) or by holding Select on the TV (a short press still holds the
+  preset); it's its own pref (`visualizer_images`), apart from the settings,
+  so the page's Save can't undo a toggle made on the TV. *Steady* paints a little every frame (the image
+  keeps re-forming), *On the beat* splashes it in on bass hits; strength
+  1–100, *Fit* or *Fill*, and *Soft edges* 0–100 (fades the image out
+  towards its borders, up to a soft oval, so it doesn't sit in a box). With
+  several, they take turns in upload order, the next one with each preset
+  change or every 10 s to 5 min; the new one simply starts being painted in
+  and the preset melts the old one away. PNG transparency is kept, so a logo
+  adds only its opaque parts. The config page scales uploads to 1280 px and
+  sends them straight away (`POST /api/visualizer/image`, raw bytes, up to
+  6 MB each, 50 images; `GET /api/visualizer/image/<id>`;
+  `POST /api/visualizer/image/delete` with `id`, `/clear` for all). They're
+  files in the app's storage (`VisualizerImage`, `files/visualizer-images/`),
+  not prefs, so the settings backup leaves them out. This reaches into
+  butterchurn internals: re-check it after `tools/update-butterchurn.sh`.
+  A **built-in set** of 12 ships in the APK (`assets/visualizer/defaults/`,
+  about 6 MB) and is copied into a SHIELD's images on first run, after any
+  already there, so mixing is on (*Steady*) out of the box; remove any like
+  an upload, and **Restore built-in images** (`POST
+  /api/visualizer/image/defaults`) brings back the removed ones
+  (`files/visualizer-defaults.json` remembers which id each became). They're
+  made by `scripts/generate_visualizer_images.py`: it draws the prompts in
+  `scripts/visualizer_images/config.json` with the local ComfyUI (as for the
+  backgrounds) as glowing subjects on black, then keys the black out to
+  transparency, so only the subject melts in. Raw and keyed images and a
+  contact sheet go to `output/visualizer/` (not committed);
+  `--install-defaults` replaces the generated part of the built-in set
+  (`NN_name.png`), `--upload http://<shield>:8080` sends them to one SHIELD
+  instead. `--add-default FILE…` adds your own pictures to the built-in set
+  (scaled to 1280 px, PNG with transparency or else JPEG; `--key-black` keys
+  out a black background); delete a file there to drop it. A SHIELD copies
+  in built-ins new in an update once, and never revives ones removed on it.
 - **Sound** ("Listen to"): *whatever is playing* (default), *one app*,
   *the whole output mix* or *a microphone*. The first two use
   `android.media.audiofx.Visualizer` on the app's own audio session, found in

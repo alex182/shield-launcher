@@ -37,6 +37,8 @@
 // of an AnalyserNode's. Settings (Store.visualizer(), edited on the config
 // page) are re-read every second and apply as they change. With the
 // playlist on "liked", the timer and the arrows keep to the liked presets.
+// A source image, if one is uploaded, is fed into the presets' feedback
+// (see `melt`) for them to warp, smear and mix like anything they drew.
 'use strict';
 const SAMPLES = 1024;
 
@@ -47,6 +49,219 @@ let viz, names, presets, current = '', held = false, nextAt = 0, labelTimer = 0;
 let cfg = {}, lastFrame = 0, lastCheck = 0;
 const wave = new Uint8Array(SAMPLES).fill(128);
 const levels = { timeByteArray: wave, timeByteArrayL: wave, timeByteArrayR: wave };
+
+/**
+ * The source images (VisualizerImage), melted by the presets, one at a
+ * time: the next in upload order with each preset change, or every
+ * imageCycle seconds. A new one needs no crossfade: it simply starts being
+ * painted in, and the preset melts the last one away. Milkdrop draws
+ * each frame by warping the last one: butterchurn swaps targetTexture into
+ * prevTexture at the start of render() and the preset's warp shader reads
+ * that. Painting the image into targetTexture just before render() puts it
+ * into the next warp, so the preset's own zoom, rotation, warp and decay
+ * carry it off: the image melts into the visuals and the visuals into it.
+ * Transparent pixels (a PNG logo's background) add nothing.
+ *
+ * "steady" paints a little every frame, so the image keeps coming back as
+ * it melts; "beat" splashes it on bass hits. Strength 1–100 scales both.
+ * This reaches into butterchurn's renderer (tested against 2.6.7); without
+ * the fields it expects it does nothing rather than break the presets.
+ */
+const melt = (() => {
+  let gl, prog, vao, buf, uScale, uAlpha, uFeather, tex = null, aspect = 1, lastDraw = 0;
+  /** The images' ids; the one painted in (or loading), since when; the latest load asked for. */
+  let ids = [], current = null, shownAt = 0, wanted = 0;
+  /**
+   * The viewport and blending butterchurn leaves at the end of a frame, read
+   * once: in a WebView those reads wait on the GPU thread, which every frame
+   * stalls the page and starves other apps (cast audio dropped out). They
+   * are the same every frame, set by its last pass.
+   */
+  let after = null;
+
+  function compile(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    return sh;
+  }
+
+  function init(g) {
+    gl = g;
+    try { setup(); } catch (e) { gl = null; throw e; }
+  }
+
+  function setup() {
+    prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, `#version 300 es
+      in vec2 aPos;
+      uniform vec2 uScale;
+      out vec2 vUv;
+      void main() {
+        // butterchurn's frames are stored upside down (row 0 is the top of
+        // the screen), as is the image (row 0 is its top): no flip.
+        vUv = aPos * 0.5 + 0.5;
+        gl_Position = vec4(aPos * uScale, 0.0, 1.0);
+      }`));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, `#version 300 es
+      precision mediump float;
+      uniform sampler2D uTex;
+      uniform float uAlpha;
+      // How far in from each edge the image fades in, in its own 0–1 units
+      // (x, y): the same distance on screen on all four sides.
+      uniform vec2 uFeather;
+      in vec2 vUv;
+      out vec4 color;
+      void main() {
+        vec4 c = texture(uTex, vUv);
+        vec2 edge = min(vUv, 1.0 - vUv);
+        vec2 f = smoothstep(vec2(0.0), max(uFeather, vec2(1e-4)), edge);
+        color = vec4(c.rgb, c.a * uAlpha * f.x * f.y);
+      }`));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    uScale = gl.getUniformLocation(prog, 'uScale');
+    uAlpha = gl.getUniformLocation(prog, 'uAlpha');
+    uFeather = gl.getUniformLocation(prog, 'uFeather');
+    // A vertex array of its own, so butterchurn's attribute setup is untouched.
+    const savedBuf = gl.getParameter(gl.ARRAY_BUFFER_BINDING);
+    vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const aPos = gl.getAttribLocation(prog, 'aPos');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, savedBuf);
+  }
+
+  function setImage(id) {
+    current = id;
+    shownAt = performance.now();
+    const want = ++wanted;
+    // The old one stays up while this one decodes; none if this one is gone.
+    const url = id ? shield.image(id) : '';
+    if (!url) { tex = null; return; }
+    const img = new Image();
+    img.onload = () => {
+      if (want !== wanted) return;   // a later one was asked for meanwhile
+      const saved = gl.getParameter(gl.TEXTURE_BINDING_2D);
+      const t = tex || gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      // Mipmapped, so a small canvas doesn't shimmer with a big image.
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, saved);
+      tex = t;
+      aspect = img.width / img.height;
+    };
+    img.onerror = () => { if (want === wanted) tex = null; };
+    img.src = url;
+  }
+
+  /** Picks up added or removed images; called with the settings, every second. */
+  function update(settings) {
+    const list = settings.images || [];
+    if (!gl || list.join() === ids.join()) return;
+    ids = list;
+    if (!ids.includes(current)) setImage(ids.length ? ids[0] : null);
+  }
+
+  function next() {
+    if (ids.length < 2) { shownAt = performance.now(); return; }
+    setImage(ids[(ids.indexOf(current) + 1) % ids.length]);
+  }
+
+  /** On "with each preset", the next image; not when the first preset loads. */
+  function presetChanged(now) {
+    if (!cfg.imageCycle && now - shownAt > 2000) next();
+  }
+
+  /** How much of the image goes in this frame, 0 to 1. */
+  function alpha(now, renderer) {
+    const strength = Math.max(1, Math.min(100, cfg.imageStrength || 30)) / 100;
+    if (cfg.imageMode === 'beat') {
+      // bass is 1 at the song's own average; hits run to 1.5–2 and past.
+      const bass = renderer.audioLevels ? renderer.audioLevels.bass : 1;
+      return Math.min(1, strength * Math.max(0, Math.min(1, (bass - 1.2) / 0.8)));
+    }
+    // Steady: set for 30 frames a second and kept the same at any other rate.
+    const perFrame30 = 0.3 * Math.pow(strength, 1.3);
+    const dt = lastDraw ? Math.min(250, now - lastDraw) : 1000 / 30;
+    return 1 - Math.pow(1 - perFrame30, dt / (1000 / 30));
+  }
+
+  /** Paints the image into the frame the preset warps next; before viz.render(). */
+  function draw(now) {
+    const r = viz.renderer;
+    if (!gl || cfg.imagesOn === false || !r || !r.targetFrameBuffer) { lastDraw = 0; return; }
+    if (cfg.imageCycle && now - shownAt >= cfg.imageCycle * 1000) next();
+    if (!tex) { lastDraw = 0; return; }
+    const a = alpha(now, r);
+    lastDraw = now;
+    if (a <= 0.001) return;
+    const w = r.texsizeX, h = r.texsizeY, frame = w / h;
+    // Half extents in clip space: "fit" shows it all, "fill" covers the frame.
+    const wider = aspect > frame;
+    const sx = (cfg.imageFit === 'fill') === wider ? aspect / frame : 1;
+    const sy = (cfg.imageFit === 'fill') === wider ? 1 : frame / aspect;
+
+    if (!after) {
+      after = {
+        viewport: gl.getParameter(gl.VIEWPORT),
+        blend: gl.isEnabled(gl.BLEND),
+        src: gl.getParameter(gl.BLEND_SRC_RGB), dst: gl.getParameter(gl.BLEND_DST_RGB),
+        srcA: gl.getParameter(gl.BLEND_SRC_ALPHA), dstA: gl.getParameter(gl.BLEND_DST_ALPHA),
+      };
+    }
+    // Bindings are tracked by WebGL itself: reading them doesn't touch the GPU.
+    const saved = Object.assign({
+      fb: gl.getParameter(gl.FRAMEBUFFER_BINDING),
+      program: gl.getParameter(gl.CURRENT_PROGRAM),
+      active: gl.getParameter(gl.ACTIVE_TEXTURE),
+    }, after);
+    gl.activeTexture(gl.TEXTURE0);
+    const savedTex = gl.getParameter(gl.TEXTURE_BINDING_2D);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, r.targetFrameBuffer);
+    gl.viewport(0, 0, w, h);
+    gl.useProgram(prog);
+    gl.bindVertexArray(vao);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform2f(uScale, sx, sy);
+    gl.uniform1f(uAlpha, a);
+    // Soft edges 0–100: up to half the shorter side, where it's an oval.
+    const soft = Math.max(0, Math.min(100, cfg.imageSoftness == null ? 35 : cfg.imageSoftness)) / 200;
+    gl.uniform2f(uFeather, soft * Math.min(1, 1 / aspect), soft * Math.min(1, aspect));
+    gl.enable(gl.BLEND);
+    // Mixed into the colour; the frame's own alpha is left as it was.
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    gl.bindVertexArray(null);
+    gl.bindTexture(gl.TEXTURE_2D, savedTex);
+    gl.activeTexture(saved.active);
+    gl.useProgram(saved.program);
+    gl.blendFuncSeparate(saved.src, saved.dst, saved.srcA, saved.dstA);
+    if (!saved.blend) gl.disable(gl.BLEND);
+    gl.viewport(saved.viewport[0], saved.viewport[1], saved.viewport[2], saved.viewport[3]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, saved.fb);
+  }
+
+  /** After a resize: the viewport read once is out of date. */
+  function resized() { after = null; }
+
+  return { init, update, draw, resized, presetChanged };
+})();
 
 function fail(text) {
   const e = document.getElementById('error');
@@ -68,6 +283,7 @@ function showLabel() {
   const small = document.createElement('small');
   small.textContent = (held ? 'Held · Select to cycle again' : '← → change · Select to hold this one') +
       (isLiked ? ' · ↑ unlike' : ' · ↑ like') +
+      ((cfg.images || []).length ? (cfg.imagesOn === false ? ' · Hold Select: images on' : ' · Hold Select: images off') : '') +
       (cfg.playlist === 'liked' && liked().length ? ' · Playing liked' : '');
   label.appendChild(small);
   label.classList.add('on');
@@ -78,6 +294,7 @@ function showLabel() {
 function load(name, blend) {
   current = name;
   viz.loadPreset(presets[name], blend);
+  melt.presetChanged(performance.now());
   nextAt = performance.now() + cfg.cycleSeconds * 1000;
   shield.showing(name);
 }
@@ -111,6 +328,7 @@ function applySettings(next) {
     canvas.width = s.w;
     canvas.height = s.h;
     viz.setRendererSize(s.w, s.h, s.mesh);
+    melt.resized();
   }
   // A preset picked on the config page while this shows, or played from it.
   if (cfg.play && cfg.playSeq !== old.playSeq && presets[cfg.play]) {
@@ -143,6 +361,14 @@ window.remote = {
     nextAt = performance.now() + cfg.cycleSeconds * 1000;
     showLabel();
   },
+  /** Select held: the overlay has already saved it; this shows it straight away. */
+  images(on) {
+    cfg.imagesOn = on;
+    showLabel();
+    const small = label.querySelector('small');
+    small.textContent = (on ? ((cfg.images || []).length ? 'Images on' : 'Images on, but there are none: add some on the config page')
+        : 'Images off') + ' · Hold Select to turn them ' + (on ? 'off' : 'on');
+  },
 };
 
 function frame(now) {
@@ -150,6 +376,7 @@ function frame(now) {
   if (now - lastCheck >= 1000) {
     lastCheck = now;
     applySettings(JSON.parse(shield.settings()));
+    melt.update(cfg);
     note.textContent = shield.note();
   }
   // A small allowance, so a 60 Hz display still draws every frame at 60.
@@ -165,6 +392,7 @@ function frame(now) {
   if (cfg.cycle && !held && now >= nextAt) {
     load(cfg.randomize ? random() : step(1), cfg.autoBlend);
   }
+  melt.draw(now);
   viz.render({ audioLevels: levels });
 }
 
@@ -179,6 +407,12 @@ try {
   const pack = window.butterchurnPresets.default || window.butterchurnPresets;
   presets = pack.getPresets();
   names = Object.keys(presets);
+  try {
+    melt.init(viz.renderer.gl);
+    melt.update(cfg);
+  } catch (e) {
+    console.warn('No source image: ' + e.message);
+  }
   const first = [cfg.play, cfg.preset].find(n => n && presets[n] && (n === cfg.play || pool().includes(n)));
   load(first || random(), 0);
   showLabel();

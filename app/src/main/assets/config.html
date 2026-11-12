@@ -211,7 +211,7 @@
     <h2>Music visualizer</h2>
     <p class="hint">Hold play/pause on the remote for Milkdrop visuals (butterchurn) over whatever is playing; hold it again
       or press Back to close. On the TV: left/right change the preset, up likes (or unlikes) it, down picks one at
-      random, select holds the current one. A short press still plays and pauses, sent on to the app as a media key. Saved changes apply
+      random, select holds the current one, holding select turns the source images on or off. A short press still plays and pauses, sent on to the app as a media key. Saved changes apply
       straight away, also while it's showing.</p>
     <label class="check"><input type="checkbox" id="visualizer-hold"> Hold play/pause for the visualizer</label>
     <div class="inline" style="margin-top:10px"><button id="visualizer-show">Show on the TV now</button></div>
@@ -268,6 +268,56 @@
       </div>
     </div>
     <p class="hint" style="margin:6px 0 0">Auto: when the timer changes preset. User solicited: picked on the remote or here.</p>
+
+    <h3 class="sub">Source images</h3>
+    <p class="hint" style="margin:0 0 8px">Pictures fed into the presets for them to melt and mix: each preset warps, zooms
+      and smears the image like anything it drew itself. With several, they take turns in the order shown, and the last
+      one melts away as the next comes in. Steady keeps painting a little in, so the image keeps re-forming as it
+      melts; On the beat splashes it in on bass hits. A PNG with a transparent background (a logo) only adds the opaque
+      parts. A built-in set comes with the launcher; remove any you don't want, and Restore brings them back. Images are
+      uploaded and removed straight away; the other settings apply on Save.</p>
+    <label class="check"><input type="checkbox" id="melt-on"> Mix images in <span class="hint" style="margin:0">(also: hold
+      Select on the TV; applies straight away)</span></label>
+    <div class="result" id="melt-on-result"></div>
+    <div id="melt-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+    <div class="inline" style="margin-top:8px">
+      <input type="file" id="melt-file" accept="image/*" multiple>
+      <button id="melt-clear">Remove all</button>
+      <button id="melt-defaults">Restore built-in images</button>
+    </div>
+    <div class="result" id="melt-result"></div>
+    <div class="grid3" style="margin-top:8px">
+      <div>
+        <label for="viz-image-mode">Mix in</label>
+        <select id="viz-image-mode">
+          <option value="steady">Steady</option><option value="beat">On the beat</option>
+        </select>
+      </div>
+      <div>
+        <label for="viz-image-strength">Strength <span id="viz-image-strength-value"></span></label>
+        <input type="range" id="viz-image-strength" min="1" max="100" step="1">
+      </div>
+      <div>
+        <label for="viz-image-fit">Size</label>
+        <select id="viz-image-fit">
+          <option value="fit">Fit (whole image)</option><option value="fill">Fill the screen</option>
+        </select>
+      </div>
+      <div>
+        <label for="viz-image-cycle">Change image</label>
+        <select id="viz-image-cycle">
+          <option value="0">With each preset</option><option value="10">Every 10 seconds</option>
+          <option value="30">Every 30 seconds</option><option value="60">Every minute</option>
+          <option value="300">Every 5 minutes</option>
+        </select>
+      </div>
+      <div>
+        <label for="viz-image-softness">Soft edges <span id="viz-image-softness-value"></span></label>
+        <input type="range" id="viz-image-softness" min="0" max="100" step="1">
+      </div>
+    </div>
+    <p class="hint" style="margin:6px 0 0">Soft edges fades each image out towards its borders so it blends into the
+      visuals instead of sitting in a box: 0 is a hard edge, 100 a soft oval.</p>
 
     <h3 class="sub">Rendering</h3>
     <div class="grid3">
@@ -1270,6 +1320,12 @@ function loadVisualizer() {
   $('viz-frame-limit').value = String(v.frameLimit);
   $('viz-canvas-size').value = String(v.canvasSize);
   $('viz-mesh-size').value = String(v.meshSize);
+  $('viz-image-mode').value = v.imageMode;
+  $('viz-image-strength').value = v.imageStrength;
+  $('viz-image-fit').value = v.imageFit;
+  $('viz-image-cycle').value = String(v.imageCycle);
+  $('viz-image-softness').value = v.imageSoftness;
+  strengthLabel();
   renderPresets(v.preset);
   sourceChanged();
 }
@@ -1318,6 +1374,11 @@ function visualizerFields() {
     frameLimit: parseInt($('viz-frame-limit').value, 10),
     canvasSize: parseFloat($('viz-canvas-size').value),
     meshSize: parseInt($('viz-mesh-size').value, 10),
+    imageMode: $('viz-image-mode').value,
+    imageStrength: parseInt($('viz-image-strength').value, 10),
+    imageFit: $('viz-image-fit').value,
+    imageCycle: parseInt($('viz-image-cycle').value, 10),
+    imageSoftness: parseInt($('viz-image-softness').value, 10),
   };
 }
 
@@ -1344,7 +1405,101 @@ async function renderVisualizerNow() {
   vizShowing = n.showing || '';
   vizLiked = n.liked || [];
   renderLiked();
+  renderMeltImages(n.images || []);
+  if (typeof n.imagesOn === 'boolean') $('melt-on').checked = n.imagesOn;
 }
+
+// The source images: uploaded and removed on their own, not with Save, and
+// scaled down here first (to the canvas's size at most), so uploads are small
+// and the TV decodes them quickly. PNG, WebP and GIF stay PNG to keep their
+// transparency, if they have any.
+const MELT_MAX = 1280;
+let meltIds = null;
+
+function renderMeltImages(ids) {
+  if (meltIds && ids.join() === meltIds.join()) return;
+  meltIds = ids;
+  $('melt-clear').disabled = !ids.length;
+  $('melt-list').innerHTML = ids.length ? ids.map((id, i) => `
+    <div style="position:relative">
+      <img src="/api/visualizer/image/${esc(id)}" alt="Image ${i + 1}" title="Image ${i + 1}"
+        style="display:block;height:72px;max-width:128px;object-fit:contain;border:1px solid #333;border-radius:4px;background:repeating-conic-gradient(#222 0 25%,#2c2c2c 0 50%) 0 0/16px 16px">
+      <button data-melt-remove="${esc(id)}" title="Remove" aria-label="Remove image ${i + 1}"
+        style="position:absolute;top:2px;right:2px;padding:0 6px;line-height:18px;min-width:0">✕</button>
+    </div>`).join('') : '<span class="hint" style="margin:0">No images yet.</span>';
+}
+
+$('melt-list').onclick = async e => {
+  const id = e.target.dataset && e.target.dataset.meltRemove;
+  if (!id) return;
+  showResult($('melt-result'), await post('/api/visualizer/image/delete', {id}));
+  renderVisualizerNow();
+};
+
+async function uploadMeltImage(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, MELT_MAX / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(bmp.width * scale));
+  c.height = Math.max(1, Math.round(bmp.height * scale));
+  const ctx = c.getContext('2d');
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  // PNG only where it's needed: a photo saved as PNG is several times the
+  // size as JPEG, and slower for the TV to decode at each change.
+  let keepAlpha = false;
+  if (/png|webp|gif/.test(file.type)) {
+    const px = ctx.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < px.length; i += 4) if (px[i] < 255) { keepAlpha = true; break; }
+  }
+  const blob = await new Promise(r => c.toBlob(r, keepAlpha ? 'image/png' : 'image/jpeg', 0.9));
+  return (await fetch('/api/visualizer/image', {method: 'POST', headers: {'Content-Type': blob.type}, body: blob})).json();
+}
+
+function strengthLabel() {
+  $('viz-image-strength-value').textContent = $('viz-image-strength').value;
+  $('viz-image-softness-value').textContent = $('viz-image-softness').value;
+}
+$('viz-image-strength').addEventListener('input', strengthLabel);
+$('viz-image-softness').addEventListener('input', strengthLabel);
+
+// One at a time, in the order picked, so they keep that order on the TV.
+$('melt-file').onchange = async () => {
+  const files = Array.from($('melt-file').files);
+  $('melt-file').value = '';
+  if (!files.length) return;
+  const el = $('melt-result');
+  let added = 0;
+  const failed = [];
+  for (const [i, file] of files.entries()) {
+    showResult(el, {ok: true, message: `Uploading ${i + 1} of ${files.length}…`});
+    try {
+      const r = await uploadMeltImage(file);
+      if (r.ok) added++;
+      else failed.push(`${file.name}: ${r.message}`);
+    } catch (err) {
+      failed.push(`${file.name}: could not read it (${err.message})`);
+    }
+    renderVisualizerNow();
+  }
+  const msg = `Added ${added} image${added === 1 ? '' : 's'}` + (failed.length ? '. Not added: ' + failed.join('; ') : '') +
+      (added && !$('melt-on').checked ? '. Tick Mix images in to see them on the TV.' : '');
+  showResult(el, {ok: !failed.length, message: msg});
+};
+
+$('melt-on').onchange = async () => {
+  showResult($('melt-on-result'), await post('/api/visualizer/images', {on: $('melt-on').checked}));
+};
+
+$('melt-defaults').onclick = async () => {
+  showResult($('melt-result'), await post('/api/visualizer/image/defaults', {}));
+  renderVisualizerNow();
+};
+
+$('melt-clear').onclick = async () => {
+  if (!confirm('Remove all the source images?')) return;
+  showResult($('melt-result'), await post('/api/visualizer/image/clear', {}));
+  renderVisualizerNow();
+};
 
 let vizShowing = '', vizLiked = [];
 

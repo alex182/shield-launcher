@@ -22,6 +22,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -57,7 +58,8 @@ import java.util.concurrent.Executors;
  *
  * Left/right step through the presets, up likes or unlikes the one showing
  * ({@link Store#visualizerLiked()}), down jumps to a random one, select
- * holds the current one, Back closes. The config page can open it on a
+ * holds the current one, holding select turns the source images
+ * ({@link VisualizerImage}) on or off, Back closes. The config page can open it on a
  * playlist or a preset of its own ({@link #show(String, String)}). The window takes focus, so the app
  * underneath keeps playing but doesn't see the arrows; media keys still go
  * through. It keeps the screen on and closes when the screen turns off.
@@ -101,6 +103,10 @@ final class VisualizerOverlay {
     /** From the config page's Play buttons: a playlist and a preset for this showing only. */
     private volatile String playPlaylist = "", playPreset = "";
     private volatile int playSeq;
+    /** Select's long press already acted (toggled the images), so its release doesn't hold the preset. */
+    private boolean selectLong;
+    /** How long select is held to toggle the images rather than hold the preset. */
+    private static final long SELECT_LONG_MS = 600;
 
     private final Runnable follow = new Runnable() {
         @Override public void run() {
@@ -207,7 +213,21 @@ final class VisualizerOverlay {
             case KeyEvent.KEYCODE_DPAD_RIGHT: call = "remote.next()"; break;
             case KeyEvent.KEYCODE_DPAD_UP: call = "remote.like()"; break;
             case KeyEvent.KEYCODE_DPAD_DOWN: call = "remote.random()"; break;
-            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: call = "remote.hold()"; break;
+            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
+                // Acted on at release, so a hold can mean something else.
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (e.getRepeatCount() == 0) {
+                        selectLong = false;
+                    } else if (!selectLong && e.getEventTime() - e.getDownTime() >= SELECT_LONG_MS) {
+                        selectLong = true;
+                        boolean on = !store.visualizerImages();
+                        store.setVisualizerImages(on);
+                        web.evaluateJavascript("remote.images(" + on + ")", null);
+                    }
+                } else if (e.getAction() == KeyEvent.ACTION_UP && !selectLong && !e.isCanceled()) {
+                    web.evaluateJavascript("remote.hold()", null);
+                }
+                return true;
             default: return false;
         }
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
@@ -391,8 +411,9 @@ final class VisualizerOverlay {
         /**
          * {@link Store#visualizer()} as JSON, plus {@code liked}, and the
          * config page's {@code playlist} and {@code play} (a preset, with
-         * {@code playSeq} counting the requests) when it opened this; the
-         * page re-reads it every second.
+         * {@code playSeq} counting the requests) when it opened this, and
+         * {@code images}, the source images' ids ({@link VisualizerImage#ids});
+         * the page re-reads it every second.
          */
         @JavascriptInterface
         public String settings() {
@@ -401,9 +422,15 @@ final class VisualizerOverlay {
                 s.put("liked", store.visualizerLiked());
                 if (!playPlaylist.isEmpty()) s.put("playlist", playPlaylist);
                 s.put("play", playPreset).put("playSeq", playSeq);
+                s.put("images", new JSONArray(VisualizerImage.ids(context)));
+                s.put("imagesOn", store.visualizerImages());
             } catch (JSONException ignored) { }
             return s.toString();
         }
+
+        /** A source image as a data: URL, "" if it's gone; asked for when it comes up. */
+        @JavascriptInterface
+        public String image(String id) { return VisualizerImage.dataUrl(context, id); }
 
         /** Likes or unlikes a preset, from the remote's up. */
         @JavascriptInterface

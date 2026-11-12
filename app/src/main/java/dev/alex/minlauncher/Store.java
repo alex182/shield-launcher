@@ -53,6 +53,7 @@ final class Store {
     static final String KEY_VISUALIZER_STATUS = "visualizer_status";   // JSON: what it listens to, written by VisualizerOverlay
     static final String KEY_VISUALIZER_LIKED = "visualizer_liked";     // JSON array of preset names, liked on the TV or the page
     static final String KEY_VISUALIZER_SHOWING = "visualizer_showing"; // the preset on screen now, "" when closed
+    static final String KEY_VISUALIZER_IMAGES = "visualizer_images";   // source images mixed in or not, toggled on the TV or the page
     static final String KEY_AMBILIGHT = "ambilight";           // JSON, see AmbilightConfig
     static final String KEY_RADAR_SHOWN = "radar_shown";       // radar pop-up while it rains
     static final String KEY_RADAR_SOURCE = "radar_source";     // image URL or camera entity
@@ -114,6 +115,12 @@ final class Store {
     static final List<Integer> VISUALIZER_FRAME_LIMITS = Arrays.asList(15, 30, 45, 60, 0);
     static final List<Double> VISUALIZER_CANVAS_SIZES = Arrays.asList(0.25, 0.5, 0.67, 1.0);
     static final List<Integer> VISUALIZER_MESH_SIZES = Arrays.asList(18, 24, 36, 48, 72, 96);
+    /** How the source image ({@link VisualizerImage}) goes into the picture: not at all, all the time, or on the beat. */
+    static final List<String> VISUALIZER_IMAGE_MODES = Arrays.asList("steady", "beat");
+    /** The whole image inside the picture, or the picture filled and the image cropped. */
+    static final List<String> VISUALIZER_IMAGE_FITS = Arrays.asList("fit", "fill");
+    /** Seconds between source images; 0 = the next one with each preset change. */
+    static final List<Integer> VISUALIZER_IMAGE_CYCLES = Arrays.asList(0, 10, 30, 60, 300);
     static final int DEFAULT_SLEEP_MINUTES = 90;
     static final int MAX_SLEEP_MINUTES = 600;
     /** What Button Mapper did with the Netflix button before this took it over. */
@@ -226,7 +233,14 @@ final class Store {
      *       picked by the timer, or by the remote or this page;</li>
      *   <li>{@code frameLimit}, {@code canvasSize}, {@code meshSize}: frames a
      *       second (0 = no limit), drawing size as a share of the screen's,
-     *       and mesh rows (the columns are 4/3 of them).</li>
+     *       and mesh rows (the columns are 4/3 of them);</li>
+     *   <li>{@code imageMode}, {@code imageStrength}, {@code imageFit},
+     *       {@code imageCycle}, {@code imageSoftness}: how the source images
+     *       ({@link VisualizerImage}) are fed into the preset's feedback for
+     *       it to melt (when {@link #visualizerImages()} is on): "steady" or on the "beat"; how strongly, 1 to
+     *       100; "fit" or "fill"; seconds before the next one, 0 for with
+     *       each preset; and how far its edges fade out, 0 (hard) to 100 (an
+     *       oval).</li>
      * </ul>
      */
     JSONObject visualizer() {
@@ -239,6 +253,9 @@ final class Store {
             int frames = in.optInt("frameLimit", 30);
             double canvas = in.optDouble("canvasSize", 0.67);
             int mesh = in.optInt("meshSize", 36);
+            String imageMode = in.optString("imageMode", "steady");
+            String imageFit = in.optString("imageFit", "fit");
+            int imageCycle = in.optInt("imageCycle", 0);
             return new JSONObject()
                     .put("source", VISUALIZER_SOURCES.contains(source) ? source : "auto")
                     .put("app", in.optString("app", ""))
@@ -251,7 +268,12 @@ final class Store {
                     .put("userBlend", Math.max(0, Math.min(60, in.optDouble("userBlend", 5.7))))
                     .put("frameLimit", VISUALIZER_FRAME_LIMITS.contains(frames) ? frames : 30)
                     .put("canvasSize", VISUALIZER_CANVAS_SIZES.contains(canvas) ? canvas : 0.67)
-                    .put("meshSize", VISUALIZER_MESH_SIZES.contains(mesh) ? mesh : 36);
+                    .put("meshSize", VISUALIZER_MESH_SIZES.contains(mesh) ? mesh : 36)
+                    .put("imageMode", VISUALIZER_IMAGE_MODES.contains(imageMode) ? imageMode : "steady")
+                    .put("imageStrength", clamp(in.optInt("imageStrength", 30), 1, 100))
+                    .put("imageFit", VISUALIZER_IMAGE_FITS.contains(imageFit) ? imageFit : "fit")
+                    .put("imageCycle", VISUALIZER_IMAGE_CYCLES.contains(imageCycle) ? imageCycle : 0)
+                    .put("imageSoftness", clamp(in.optInt("imageSoftness", 35), 0, 100));
         } catch (JSONException e) {
             throw new IllegalStateException(e);   // only put() of finite values above
         }
@@ -284,6 +306,19 @@ final class Store {
         if (liked) out.put(preset);
         prefs.edit().putString(KEY_VISUALIZER_LIKED, out.toString()).apply();
     }
+
+    /**
+     * Whether the source images are mixed in. Kept apart from
+     * {@link #visualizer()}, like the likes, so the page's Save can't undo a
+     * toggle made on the TV. On by default (the built-in images are there
+     * from the start), except where an earlier version saved the mode "off".
+     */
+    boolean visualizerImages() {
+        if (prefs.contains(KEY_VISUALIZER_IMAGES)) return prefs.getBoolean(KEY_VISUALIZER_IMAGES, true);
+        try { return !"off".equals(new JSONObject(prefs.getString(KEY_VISUALIZER, "{}")).optString("imageMode")); }
+        catch (JSONException e) { return true; }
+    }
+    void setVisualizerImages(boolean on) { prefs.edit().putBoolean(KEY_VISUALIZER_IMAGES, on).apply(); }
 
     String visualizerShowing() { return prefs.getString(KEY_VISUALIZER_SHOWING, ""); }
     void setVisualizerShowing(String preset) { prefs.edit().putString(KEY_VISUALIZER_SHOWING, preset).apply(); }
