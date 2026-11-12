@@ -240,7 +240,9 @@ final class Store {
      *       it to melt (when {@link #visualizerImages()} is on): "steady" or on the "beat"; how strongly, 1 to
      *       100; "fit" or "fill"; seconds before the next one, 0 for with
      *       each preset; and how far its edges fade out, 0 (hard) to 100 (an
-     *       oval).</li>
+     *       oval);</li>
+     *   <li>{@code imageKeep}: 0 to 100, how strongly the image is also laid
+     *       over the finished picture, where the preset can't wash it out.</li>
      * </ul>
      */
     JSONObject visualizer() {
@@ -273,7 +275,8 @@ final class Store {
                     .put("imageStrength", clamp(in.optInt("imageStrength", 30), 1, 100))
                     .put("imageFit", VISUALIZER_IMAGE_FITS.contains(imageFit) ? imageFit : "fit")
                     .put("imageCycle", VISUALIZER_IMAGE_CYCLES.contains(imageCycle) ? imageCycle : 0)
-                    .put("imageSoftness", clamp(in.optInt("imageSoftness", 35), 0, 100));
+                    .put("imageSoftness", clamp(in.optInt("imageSoftness", 35), 0, 100))
+                    .put("imageKeep", clamp(in.optInt("imageKeep", 20), 0, 100));
         } catch (JSONException e) {
             throw new IllegalStateException(e);   // only put() of finite values above
         }

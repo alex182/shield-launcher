@@ -188,7 +188,11 @@ The config page's **Show on the TV now** opens it too.
   so the page's Save can't undo a toggle made on the TV. *Steady* paints a little every frame (the image
   keeps re-forming), *On the beat* splashes it in on bass hits; strength
   1–100, *Fit* or *Fill*, and *Soft edges* 0–100 (fades the image out
-  towards its borders, up to a soft oval, so it doesn't sit in a box). With
+  towards its borders, up to a soft oval, so it doesn't sit in a box).
+  Some presets wash the melt out whatever the strength (their composite
+  shader recolours, inverts or echoes the whole picture), so *Keep visible*
+  0–100 (20 by default) also lays the image over the finished picture after
+  `render()`, where the preset can't touch it. With
   several, they take turns in upload order, the next one with each preset
   change or every 10 s to 5 min; the new one simply starts being painted in
   and the preset melts the old one away. PNG transparency is kept, so a logo
