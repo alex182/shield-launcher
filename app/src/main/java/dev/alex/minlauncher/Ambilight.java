@@ -301,6 +301,138 @@ final class Ambilight {
         }
     }
 
+    // ------------------------------------------------------------- auto edge
+
+    /**
+     * "How far into the picture" and "Skip the outer edge", tuned from the
+     * picture itself, a frame at a time, from {@link #integrate}'s tables.
+     *
+     * <p>Skip: the picture's edge moves with the content, but a channel logo,
+     * a game's HUD or a menu frame stays put. Each {@value #STEP}%-wide ring
+     * in from the border (out to {@value #MAX_INSET}%) is split into
+     * segments, and how much each changes from frame to frame is followed
+     * over a few seconds. Rings much stiller than the picture inside them are
+     * skipped. A still picture (paused, a menu) says nothing, so the skip is
+     * kept as it was.
+     *
+     * <p>Depth: when the edge is dark but the middle isn't (a dark scene lit
+     * in the centre), the patches reach deeper, up to {@value #MAX_DEPTH}%,
+     * so the LEDs still get colour; a bright, colourful edge keeps them
+     * shallow ({@value #MIN_DEPTH}%), so each LED follows its own part of
+     * the picture. Both move slowly and in steps, so the room doesn't pump.
+     */
+    static final class AutoEdge {
+        static final int STEP = 2, MAX_INSET = 20, MIN_DEPTH = 10, MAX_DEPTH = 40, DEPTH_STEP = 5;
+        private static final int RINGS = MAX_INSET / STEP, SEGMENTS = 4;   // per side
+        /** Motion (mean luma change a frame) below this in the reference band: a still picture. */
+        private static final double STILL = 1.0;
+        /** A ring moving less than this share of the reference band's motion is a static border. */
+        private static final double STATIC_SHARE = 0.3;
+        /** A new skip must hold this long before it's taken. */
+        private static final long HOLD_MS = 1500;
+        private static final double MOTION_TAU_MS = 3000, DEPTH_TAU_MS = 2000;
+
+        private final float[][] last = new float[RINGS + 1][4 * SEGMENTS];
+        private final double[] motion = new double[RINGS + 1];   // ring RINGS: the reference band, 20–30% in
+        private boolean primed;
+        private double depthF;
+        private int depth, inset, pendingInset = -1;
+        private long pendingMs;
+        private final float[] px = new float[3];
+
+        AutoEdge(int depth, int inset) {
+            this.depth = clamp(depth, MIN_DEPTH, MAX_DEPTH);
+            this.inset = clamp(inset, 0, MAX_INSET);
+            depthF = this.depth;
+        }
+
+        int depth() { return depth; }
+        int inset() { return inset; }
+
+        /** One frame; true when the depth or the skip changed (the boxes need making again). */
+        boolean update(int[] r, int[] g, int[] b, int w, int[] crop, long dtMs) {
+            int cw = crop[2] - crop[0], ch = crop[3] - crop[1];
+            if (cw < 20 || ch < 20 || dtMs <= 0) return false;
+            double a = 1 - Math.exp(-dtMs / MOTION_TAU_MS);
+            for (int k = 0; k <= RINGS; k++) {
+                double from = k * STEP / 100.0, to = k < RINGS ? (k + 1) * STEP / 100.0 : 0.3;
+                double diff = 0;
+                for (int side = 0, i = 0; side < 4; side++) {
+                    for (int sg = 0; sg < SEGMENTS; sg++, i++) {
+                        float l = luma(r, g, b, w, segment(crop, side, sg, from, to));
+                        diff += Math.abs(l - last[k][i]);
+                        last[k][i] = l;
+                    }
+                }
+                if (primed) motion[k] += a * (diff / (4 * SEGMENTS) - motion[k]);
+            }
+            primed = true;
+            boolean changed = false;
+
+            double ref = motion[RINGS];
+            if (ref > STILL) {
+                int k = 0;
+                while (k < RINGS && motion[k] < STATIC_SHARE * ref) k++;
+                int want = k * STEP;
+                if (want == inset) {
+                    pendingInset = -1;
+                } else if (want != pendingInset) {
+                    pendingInset = want;
+                    pendingMs = 0;
+                } else if ((pendingMs += dtMs) >= HOLD_MS) {
+                    inset = want;
+                    pendingInset = -1;
+                    changed = true;
+                }
+            }
+
+            // Edge band: from the skip, 15% deep, all round; centre: the middle 40%.
+            double i0 = inset / 100.0;
+            float edge = ringLuma(r, g, b, w, crop, i0, i0 + 0.15), mid = luma(r, g, b, w, rect(crop, 0.3));
+            if (mid > 8) {
+                double dark = Math.max(0, Math.min(1, 1 - edge / mid));
+                double want = MIN_DEPTH + (MAX_DEPTH - MIN_DEPTH) * dark;
+                depthF += (1 - Math.exp(-dtMs / DEPTH_TAU_MS)) * (want - depthF);
+                int d = clamp((int) Math.round(depthF / DEPTH_STEP) * DEPTH_STEP, MIN_DEPTH, MAX_DEPTH);
+                if (d != depth) { depth = d; changed = true; }
+            }
+            return changed;
+        }
+
+        /** Segment {@code sg} of a side (0 top, 1 bottom, 2 left, 3 right), between {@code from} and {@code to} in. */
+        private static int[] segment(int[] c, int side, int sg, double from, double to) {
+            int cw = c[2] - c[0], ch = c[3] - c[1];
+            if (side < 2) {
+                int x0 = c[0] + cw * sg / SEGMENTS, x1 = c[0] + cw * (sg + 1) / SEGMENTS;
+                int a = (int) Math.floor(from * ch), z = Math.max(a + 1, (int) Math.round(to * ch));
+                return side == 0 ? new int[] {x0, c[1] + a, x1, c[1] + z} : new int[] {x0, c[3] - z, x1, c[3] - a};
+            }
+            int y0 = c[1] + ch * sg / SEGMENTS, y1 = c[1] + ch * (sg + 1) / SEGMENTS;
+            int a = (int) Math.floor(from * cw), z = Math.max(a + 1, (int) Math.round(to * cw));
+            return side == 2 ? new int[] {c[0] + a, y0, c[0] + z, y1} : new int[] {c[2] - z, y0, c[2] - a, y1};
+        }
+
+        private static int[] rect(int[] c, double in) {
+            int dx = (int) Math.round(in * (c[2] - c[0])), dy = (int) Math.round(in * (c[3] - c[1]));
+            return new int[] {c[0] + dx, c[1] + dy, Math.max(c[0] + dx + 1, c[2] - dx), Math.max(c[1] + dy + 1, c[3] - dy)};
+        }
+
+        /** Mean luma of the ring between {@code from} and {@code to} in from the border. */
+        private float ringLuma(int[] r, int[] g, int[] b, int w, int[] c, double from, double to) {
+            int[] o = rect(c, from), i = rect(c, Math.min(to, 0.49));
+            double ao = area(o), ai = area(i);
+            if (ao <= ai) return luma(r, g, b, w, o);
+            return (float) ((luma(r, g, b, w, o) * ao - luma(r, g, b, w, i) * ai) / (ao - ai));
+        }
+
+        private static double area(int[] box) { return (double) (box[2] - box[0]) * (box[3] - box[1]); }
+
+        private float luma(int[] r, int[] g, int[] b, int w, int[] box) {
+            average(r, g, b, w, box, px);
+            return 0.299f * px[0] + 0.587f * px[1] + 0.114f * px[2];
+        }
+    }
+
     // ---------------------------------------------------------------- colour
 
     /**

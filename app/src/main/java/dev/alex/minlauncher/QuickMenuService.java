@@ -86,6 +86,7 @@ public class QuickMenuService extends AccessibilityService {
     private EventReminders reminders;
     private Store store;
     private WebConfigServer web;
+    private TvWatcher watcher;
 
     // Sleep timer: elapsedRealtime when it fires, 0 = off.
     private long sleepAt;
@@ -105,6 +106,7 @@ public class QuickMenuService extends AccessibilityService {
         @Override public void onReceive(Context c, Intent i) {
             if (Intent.ACTION_SCREEN_ON.equals(i.getAction())) autoStartAmbilight();
             else cancelSleep();
+            if (watcher != null) watcher.poke();
         }
     };
     private TextView ambilightRow;
@@ -137,8 +139,10 @@ public class QuickMenuService extends AccessibilityService {
         web = new WebConfigServer(this, store, () -> handler.post(radar::force),
                 () -> handler.post(alerts::test), () -> handler.post(reminders::test),
                 () -> handler.post(reminders::testDigest), (playlist, preset) -> handler.post(() -> visualizer.show(playlist, preset)));
-        web.setScreenshots(() -> Screenshot.png(this));
+        web.setScreenshots(live -> live ? Screenshot.jpeg(this) : Screenshot.png(this));
         web.start();
+        watcher = new TvWatcher(this, store, visualizer::isShowing);
+        watcher.start();
         IntentFilter screen = new IntentFilter(Intent.ACTION_SCREEN_OFF);
         screen.addAction(Intent.ACTION_SCREEN_ON);
         registerReceiver(screenOff, screen);
@@ -296,7 +300,11 @@ public class QuickMenuService extends AccessibilityService {
     }
 
     @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) { }
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (watcher != null && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            watcher.windowChanged(event.getPackageName(), event.getClassName());
+        }
+    }
 
     @Override
     public void onInterrupt() { }
@@ -316,6 +324,7 @@ public class QuickMenuService extends AccessibilityService {
         if (alerts != null) alerts.shutdown();
         if (reminders != null) reminders.shutdown();
         if (web != null) web.stop();
+        if (watcher != null) watcher.stop();
         calls.shutdownNow();
         super.onDestroy();
     }

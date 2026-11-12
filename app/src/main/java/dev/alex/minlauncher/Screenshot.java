@@ -13,7 +13,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * What the TV shows, as a PNG, for the config page's Screenshot button.
+ * What the TV shows, as a PNG, for the config page's Screenshot button, or a
+ * smaller JPEG for its live view.
  * Taken by the quick actions' accessibility service (Android 11's
  * takeScreenshot, allowed by canTakeScreenshot in quick_menu_service.xml), so
  * it sees every app and overlay, without the ambilight's screen capture.
@@ -25,8 +26,18 @@ final class Screenshot {
 
     private Screenshot() { }
 
-    /** Blocking: call off the main thread. */
+    /** Full size, lossless, for saving. Blocking: call off the main thread. */
     static byte[] png(AccessibilityService service) throws IOException {
+        return take(service, Bitmap.CompressFormat.PNG, 100, 1);
+    }
+
+    /** Half size JPEG, a fraction of the PNG's time, for the page's live view. */
+    static byte[] jpeg(AccessibilityService service) throws IOException {
+        return take(service, Bitmap.CompressFormat.JPEG, 80, 2);
+    }
+
+    private static byte[] take(AccessibilityService service, Bitmap.CompressFormat format, int quality,
+            int shrink) throws IOException {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) throw new IOException("Screenshots need Android 11");
         CountDownLatch done = new CountDownLatch(1);
         HardwareBuffer[] buffer = new HardwareBuffer[1];
@@ -57,11 +68,14 @@ final class Screenshot {
             if (hw == null) throw new IOException("Could not read the screenshot");
             // A hardware bitmap can't be compressed; a software copy can.
             Bitmap sw = hw.copy(Bitmap.Config.ARGB_8888, false);
+            Bitmap small = shrink > 1
+                    ? Bitmap.createScaledBitmap(sw, sw.getWidth() / shrink, sw.getHeight() / shrink, true) : sw;
             try {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                sw.compress(Bitmap.CompressFormat.PNG, 100, out);
+                small.compress(format, quality, out);
                 return out.toByteArray();
             } finally {
+                if (small != sw) small.recycle();
                 sw.recycle();
             }
         } finally {

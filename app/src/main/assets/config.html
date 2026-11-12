@@ -165,6 +165,7 @@
   <div class="inline" style="justify-content:space-between; margin-bottom:8px">
     <b>Screenshot</b>
     <span>
+      <label class="check" style="display:inline-flex; margin:0 8px 0 0"><input type="checkbox" id="shot-live"> Live</label>
       <a id="shot-save" download hidden>Download</a>
       <button id="shot-again">Take again</button>
       <button id="shot-close">Close</button>
@@ -441,11 +442,24 @@
       <div><label for="amb-fps">Updates a second</label>
         <select id="amb-fps"><option>15</option><option>20</option><option>25</option><option>30</option><option>45</option><option>60</option></select></div>
     </div>
+    <label class="check"><input type="checkbox" id="amb-auto-edge"> Adjust "How far into the picture" and "Skip the outer edge"
+      automatically from what's on screen</label>
+    <div class="now" id="amb-edge-now" style="margin-top:6px" hidden></div>
     <label class="check"><input type="checkbox" id="amb-bars"> Skip black bars (letterboxed films light the room from the picture, not the bars)</label>
     <p class="hint" style="margin:6px 0 0">Each LED averages a patch of the picture by the edge in its direction. "How far
       into the picture" is the patch's depth; "Skip the outer edge" starts it further in, past bright borders, menus or
       logos at the very edge. Pale, washed-out colour is usually gamma instead: try 2.2 (WS2812 strips are linear, the
       picture isn't).</p>
+  </section>
+
+  <section id="watching">
+    <h2>Lights while watching</h2>
+    <p class="hint">Room lights that dim (or turn off) while one of these apps plays, and come back a few seconds after you
+      pause or stop it, or when the TV goes off. The SHIELD can only tell that an app is playing sound, so music, trailers
+      and theme songs in these apps count too: pick the video apps.</p>
+    <h3 class="sub">Apps</h3>
+    <div id="watch-apps"></div>
+    <div data-mode-lights="playback"></div>
   </section>
 
   <section>
@@ -635,6 +649,17 @@
       </div>
     </div>
     <label class="check" id="clear-wrap"><input type="checkbox" id="ha-clear"> Remove the saved token</label>
+
+    <h3 class="sub">Report what the TV is doing</h3>
+    <p class="hint" style="margin:4px 0 0">Keeps a sensor in Home Assistant up to date, for automations: its state is
+      <code>off</code>, <code>home</code>, <code>app</code>, <code>playing</code> or <code>visualizer</code>, with
+      attributes <code>app</code>, <code>app_name</code>, <code>playing</code>, <code>playing_app</code>,
+      <code>visualizer</code>, <code>ambilight</code> and <code>screen</code>. Sent on every change and every five minutes
+      (a sensor set this way is gone after Home Assistant restarts, until the next send).</p>
+    <label class="check"><input type="checkbox" id="ha-report-on"> Report to Home Assistant</label>
+    <label for="ha-report-entity">Sensor</label>
+    <input id="ha-report-entity" spellcheck="false" style="max-width:360px">
+    <div class="now" id="ha-report-now" style="margin-top:10px"></div>
     <div class="inline" style="margin-top:12px">
       <button id="ha-test">Test connection</button>
     </div>
@@ -644,7 +669,7 @@
   <section id="backup">
     <h2>Backup</h2>
     <p class="hint">Saves this SHIELD's settings to a file: pinned and hidden apps, quick actions, the visualizer and its
-      liked presets, the ambilight's room and strips, room lights, cameras, calendar, weather, background and the Home Assistant
+      liked presets, the ambilight's room and strips, room lights (also while watching), cameras, calendar, weather, background and the Home Assistant
       address. Not the Home Assistant token: this page never reads it back, so type it again after restoring onto a fresh
       install. Restore puts back the parts you pick, from this SHIELD's backups or the other one's.</p>
     <div class="inline">
@@ -984,6 +1009,13 @@ async function load() {
     (as.error ? `<span class="bad">${esc(as.error)}</span>` : `${as.active} active alert${as.active === 1 ? '' : 's'} at this severity`) +
     ` <span style="color:var(--dim)">(checked ${esc(new Date(as.at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}))})</span>`;
   $('ha-url').value = state.haUrl;
+  $('ha-report-on').checked = state.haReport.on;
+  $('ha-report-entity').value = state.haReport.entity;
+  $('ha-report-entity').placeholder = state.haReportDefault;
+  const hr = state.haReportStatus || {};
+  $('ha-report-now').innerHTML = hr.at === undefined ? 'Nothing sent yet.' :
+    esc(hr.text) + (hr.error ? `<span class="bad">${esc(hr.error)}</span>` : '') +
+    ` <span style="color:var(--dim)">(${esc(new Date(hr.at).toLocaleString([], {dateStyle: 'short', timeStyle: 'short'}))})</span>`;
   $('ha-token').value = '';
   $('ha-token').placeholder = state.haTokenSet ? 'Saved. Leave blank to keep it' : 'Not set';
   $('ha-clear').checked = false;
@@ -1237,8 +1269,8 @@ document.addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.field;
   if (f) draft.actions[+e.target.dataset.i][f] = e.target.value;
   if (f === 'icon') updateIcon(+e.target.dataset.i);
-  if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear'].includes(e.target.id)
-      || /^(bg|ov|radar|alerts|calendar|visualizer|viz|amb)-/.test(e.target.id)) markDirty();
+  if (f || ['hold', 'single-press', 'sleep-minutes', 'sleep-shown', 'ha-url', 'ha-token', 'ha-clear', 'ha-report-on', 'ha-report-entity'].includes(e.target.id)
+      || /^(bg|ov|radar|alerts|calendar|visualizer|viz|amb|watch)-/.test(e.target.id)) markDirty();
 });
 
 $('add-action').onclick = () => {
@@ -1611,29 +1643,64 @@ async function takeShot() {
   }
 }
 
-$('shot-take').onclick = takeShot;
-$('shot-again').onclick = takeShot;
-$('shot-close').onclick = () => $('shot').close();
+$('shot-take').onclick = () => { $('shot-live').checked = false; takeShot(); };
+$('shot-again').onclick = () => { $('shot-live').checked = false; takeShot(); };
+$('shot-close').onclick = () => { $('shot-live').checked = false; $('shot').close(); };
+$('shot').addEventListener('close', () => { $('shot-live').checked = false; });
+
+/** Live: a small JPEG as often as Android allows (about one a second), until unticked or closed. */
+let liveRun = 0;
+$('shot-live').onchange = async () => {
+  const run = ++liveRun, r = $('shot-result');
+  if (!$('shot-live').checked) { r.textContent = ''; return; }
+  $('shot-save').hidden = true;
+  $('shot-again').disabled = true;
+  r.textContent = 'Live…'; r.className = 'result';
+  while (run === liveRun && $('shot-live').checked && $('shot').open) {
+    const t0 = Date.now();
+    try {
+      const res = await fetch('/api/screenshot/live', {cache: 'no-store'});
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))).error || 'HTTP ' + res.status;
+        if (!/Too soon/.test(e)) showResult(r, {ok: false, message: e});
+      } else {
+        const url = URL.createObjectURL(await res.blob());
+        if (shotUrl) URL.revokeObjectURL(shotUrl);
+        shotUrl = url;
+        $('shot-img').src = url;
+        $('shot-img').hidden = false;
+        r.textContent = 'Live · ' + new Date().toLocaleTimeString(); r.className = 'result';
+      }
+    } catch (err) {
+      showResult(r, {ok: false, message: 'Lost the SHIELD: ' + err.message});
+    }
+    await new Promise(ok => setTimeout(ok, Math.max(250, 1100 - (Date.now() - t0))));
+  }
+  if (run === liveRun) $('shot-again').disabled = false;
+};
 
 // ------------------------------------------------------------ room lights
 
 /** The visualizer's and the ambilight's Room lights blocks: same markup, ids prefixed viz- and amb- (so edits mark the page unsaved). */
 const ML = {visualizer: {p: 'viz', what: 'the visualizer', opens: 'opens', closes: 'closes'},
-            ambilight: {p: 'amb', what: 'the ambilight', opens: 'starts', closes: 'stops'}};
+            ambilight: {p: 'amb', what: 'the ambilight', opens: 'starts', closes: 'stops', tvOff: true},
+            playback: {p: 'watch', what: 'one of the apps above', opens: 'starts playing', closes: 'stops', tvOff: true}};
 let lightList = null;   // [{id, name, state}] from Home Assistant, once loaded
 
 for (const el of document.querySelectorAll('[data-mode-lights]')) {
   const mode = el.dataset.modeLights, m = ML[mode], p = m.p;
   el.innerHTML = `
     <h3 class="sub">Room lights</h3>
-    <p class="hint" style="margin:4px 0 0">Home Assistant lights (Zigbee or any other) or switches to turn off or on as
-      ${m.what} ${m.opens}, and back as it ${m.closes}${mode === 'ambilight' ? ' or the TV goes off' : ''}.
+    <p class="hint" style="margin:4px 0 0">Home Assistant lights (Zigbee or any other) or switches to turn off, on or dim
+      as ${m.what} ${m.opens}, and back as it ${m.closes}${m.tvOff ? ' or the TV goes off' : ''}.
       "Put back as they were" keeps each light's state in a Home Assistant scene first, so brightness and colour come back
-      too. Lights shared with ${mode === 'ambilight' ? 'the visualizer' : 'the ambilight'} are put back once both have finished.</p>
+      too. Lights also used by the visualizer, the ambilight or while watching are put back once all of those have
+      finished. Switches can't dim or fade: dimming turns them off.</p>
     <div class="grid">
       <div><label for="${p}-lights-enter">When it ${m.opens}</label>
         <select id="${p}-lights-enter">
           <option value="off">Turn them off</option>
+          <option value="dim">Dim them</option>
           <option value="on">Turn them on</option>
           <option value="none">Leave them</option>
         </select></div>
@@ -1644,12 +1711,24 @@ for (const el of document.querySelectorAll('[data-mode-lights]')) {
           <option value="off">Turn them off</option>
           <option value="none">Leave them</option>
         </select></div>
+      <div id="${p}-lights-level-wrap"><label for="${p}-lights-level">Dim to (%)</label>
+        <input type="number" id="${p}-lights-level" min="1" max="100" step="5"></div>
+      <div><label for="${p}-lights-transition">Fade (seconds)</label>
+        <input type="number" id="${p}-lights-transition" min="0" max="30" step="1"></div>
     </div>
     <div class="now" id="${p}-lights-now" style="margin-top:10px"></div>
     <div id="${p}-lights-list" style="margin-top:6px"></div>
     <div class="inline"><button id="${p}-lights-load">Load lights from Home Assistant</button></div>
     <div class="result" id="${p}-lights-result"></div>`;
-  $(p + '-lights-enter').onchange = e => { draft.modeLights[mode].enter = e.target.value; };
+  $(p + '-lights-enter').onchange = e => { draft.modeLights[mode].enter = e.target.value; showLevel(mode); };
+  $(p + '-lights-level').oninput = e => {
+    const v = parseInt(e.target.value, 10);
+    if (v >= 1 && v <= 100) draft.modeLights[mode].level = v;
+  };
+  $(p + '-lights-transition').oninput = e => {
+    const v = parseInt(e.target.value, 10);
+    if (v >= 0 && v <= 30) draft.modeLights[mode].transition = v;
+  };
   $(p + '-lights-leave').onchange = e => { draft.modeLights[mode].leave = e.target.value; };
   $(p + '-lights-load').onclick = async () => {
     const r = $(p + '-lights-result');
@@ -1667,11 +1746,31 @@ for (const el of document.querySelectorAll('[data-mode-lights]')) {
   };
 }
 
+function showLevel(mode) {
+  $(ML[mode].p + '-lights-level-wrap').style.visibility = draft.modeLights[mode].enter === 'dim' ? '' : 'hidden';
+}
+
+/** Installed apps, ticked ones first; a ticked one that isn't installed stays, marked. */
+function renderWatchApps() {
+  const chosen = draft.modeLights.playback.apps, names = new Map(state.apps.map(a => [a.pkg, a.label]));
+  const row = (pkg, on) => `
+    <div class="row">
+      <label class="check" style="margin:0"><input type="checkbox" data-watch-app="${esc(pkg)}" ${on ? 'checked' : ''}></label>
+      <span class="name"><span>${esc(names.get(pkg) || pkg)}</span><span class="pkg">${esc(pkg)}${names.has(pkg) ? '' : ' · not installed'}</span></span>
+    </div>`;
+  $('watch-apps').innerHTML = chosen.map(p => row(p, true))
+    .concat(state.apps.filter(a => !chosen.includes(a.pkg)).map(a => row(a.pkg, false))).join('');
+}
+
 function loadModeLights() {
   draft.modeLights = JSON.parse(JSON.stringify(state.modeLights));
+  renderWatchApps();
   for (const [mode, m] of Object.entries(ML)) {
     $(m.p + '-lights-enter').value = draft.modeLights[mode].enter;
     $(m.p + '-lights-leave').value = draft.modeLights[mode].leave;
+    $(m.p + '-lights-level').value = draft.modeLights[mode].level;
+    $(m.p + '-lights-transition').value = draft.modeLights[mode].transition;
+    showLevel(mode);
     const st = (state.modeLightsStatus || {})[mode];
     $(m.p + '-lights-now').innerHTML = !st ? 'Nothing switched yet.' :
       esc(st.text) + (st.error ? `<span class="bad">${esc(st.error)}</span>` : '') +
@@ -1698,6 +1797,14 @@ function renderModeLights(mode) {
 
 document.addEventListener('change', e => {
   const ds = e.target.dataset || {};
+  if (ds.watchApp) {
+    const apps = draft.modeLights.playback.apps;
+    if (e.target.checked) { if (!apps.includes(ds.watchApp)) apps.push(ds.watchApp); }
+    else draft.modeLights.playback.apps = apps.filter(x => x !== ds.watchApp);
+    renderWatchApps();
+    markDirty();
+    return;
+  }
   if (!ds.mlLight) return;
   const list = draft.modeLights[ds.mlMode].lights;
   if (e.target.checked) { if (!list.includes(ds.mlLight)) list.push(ds.mlLight); }
@@ -1743,6 +1850,8 @@ function loadAmbilight() {
   $('amb-units').value = A().units;
   $('amb-fps').value = String(A().fps);
   $('amb-bars').checked = A().blackBars;
+  $('amb-auto-edge').checked = A().autoEdge;
+  showAutoEdge();
   renderAmbInputs();
   renderAmbStrips();
   renderStage();
@@ -2338,6 +2447,18 @@ $('amb-tv-diag').oninput = () => {
 $('amb-units').onchange = () => { A().units = $('amb-units').value; renderAmbInputs(); renderAmbStrips(); renderStage(); };
 $('amb-auto').onchange = () => { A().autoStart = $('amb-auto').checked; };
 $('amb-bars').onchange = () => { A().blackBars = $('amb-bars').checked; };
+$('amb-auto-edge').onchange = () => { A().autoEdge = $('amb-auto-edge').checked; showAutoEdge(); };
+
+/** Auto: the two fields are the starting point only, and the TV says what it's using now. */
+function showAutoEdge() {
+  const on = A().autoEdge, e = amb.status && amb.status.capture && amb.status.capture.edge;
+  $('amb-edge').disabled = $('amb-inset').disabled = on;
+  $('amb-edge-now').hidden = !on;
+  if (!on) return;
+  $('amb-edge-now').innerHTML = e && e.auto
+    ? `Now: ${e.depth}% into the picture, skipping the outer ${e.inset}%. <span style="color:var(--dim)">Depth goes from 10% (bright edges) to 40% (dark edges with a lit middle); the skip grows past logos, HUDs and frames that stay still while the picture moves.</span>`
+    : (e ? 'Save to turn it on.' : 'Adjusts while the ambilight follows the screen.');
+}
 $('amb-fps').onchange = () => { A().fps = parseInt($('amb-fps').value, 10); };
 
 /** Something in the layout changed: redraw, re-ask the TV where the LEDs fall, and mark unsaved. */
@@ -2386,6 +2507,7 @@ async function pollAmbilight() {
   $('amb-now').innerHTML = text;
   $('amb-start').textContent = st.state === 'off' ? 'Start on the TV' : 'Stop';
   renderAmbStats();
+  showAutoEdge();
   if (amb.colors === 'live') renderStage();
 }
 
@@ -2534,6 +2656,7 @@ $('save').onclick = async () => {
     radarLightningStrike: $('radar-lightning-strike').value.trim(),
     radarLightningMiles: Math.max(1, Math.min(100, Math.round(parseFloat($('radar-lightning-miles').value) || 15))),
     haUrl: $('ha-url').value.trim(),
+    haReport: {on: $('ha-report-on').checked, entity: $('ha-report-entity').value.trim()},
     background: backgroundFields(),
   };
   if ($('ha-clear').checked) body.clearToken = true;

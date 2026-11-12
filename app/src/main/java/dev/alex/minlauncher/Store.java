@@ -56,6 +56,8 @@ final class Store {
     static final String KEY_VISUALIZER_IMAGES = "visualizer_images";   // source images mixed in or not, toggled on the TV or the page
     static final String KEY_AMBILIGHT = "ambilight";           // JSON, see AmbilightConfig
     static final String KEY_MODE_LIGHTS = "mode_lights";       // JSON, see ModeLights: room lights for the visualizer and ambilight
+    static final String KEY_HA_REPORT = "ha_report";           // JSON {on, entity}: what the TV is doing, as a Home Assistant sensor
+    static final String KEY_HA_REPORT_STATUS = "ha_report_status";   // JSON {at, text, error}, written by TvWatcher
     static final String KEY_MODE_LIGHTS_STATUS = "mode_lights_status";   // JSON {mode: {at, text, error}}, written by ModeLightsController
     static final String KEY_RADAR_SHOWN = "radar_shown";       // radar pop-up while it rains
     static final String KEY_RADAR_SOURCE = "radar_source";     // image URL or camera entity
@@ -357,6 +359,38 @@ final class Store {
 
     synchronized void setModeLightsStatus(String mode, JSONObject status) throws JSONException {
         prefs.edit().putString(KEY_MODE_LIGHTS_STATUS, modeLightsStatus().put(mode, status).toString()).apply();
+    }
+
+    /** Reporting to Home Assistant: on or off, and the sensor; "" = the default from the device name. */
+    JSONObject haReport() {
+        JSONObject in;
+        try { in = new JSONObject(prefs.getString(KEY_HA_REPORT, "{}")); }
+        catch (JSONException e) { in = new JSONObject(); }
+        String entity = in.optString("entity", "").trim();
+        try {
+            return new JSONObject().put("on", in.optBoolean("on", false))
+                    .put("entity", TvState.validEntity(entity) ? entity : "");
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    void setHaReport(JSONObject settings) throws JSONException {
+        String entity = settings.optString("entity", "").trim();
+        if (!entity.isEmpty() && !TvState.validEntity(entity)) {
+            throw new JSONException("Sensor must look like sensor.office_shield (lowercase letters, digits and _)");
+        }
+        prefs.edit().putString(KEY_HA_REPORT, new JSONObject().put("on", settings.optBoolean("on"))
+                .put("entity", entity).toString()).apply();
+    }
+
+    JSONObject haReportStatus() {
+        try { return new JSONObject(prefs.getString(KEY_HA_REPORT_STATUS, "{}")); }
+        catch (JSONException e) { return new JSONObject(); }
+    }
+
+    void setHaReportStatus(JSONObject status) {
+        prefs.edit().putString(KEY_HA_REPORT_STATUS, status.toString()).apply();
     }
 
     boolean radarShown() { return prefs.getBoolean(KEY_RADAR_SHOWN, true); }

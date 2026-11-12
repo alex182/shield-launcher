@@ -123,6 +123,14 @@ final class HomeAssistant {
         return f.format(new Date(ms));
     }
 
+    /**
+     * POST /api/states/{entity}: creates or updates an entity of our own
+     * ({state, attributes}). It lasts until Home Assistant restarts.
+     */
+    static void setState(String url, String token, String entityId, JSONObject body) throws IOException {
+        request(url, token, "POST", "/api/states/" + entityId, body.toString());
+    }
+
     /** POST /api/services/{domain}/{service} with the action's JSON data. */
     static String call(String url, String token, Store.Action action) throws IOException {
         int dot = action.service.indexOf('.');
