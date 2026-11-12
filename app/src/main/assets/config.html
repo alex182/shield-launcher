@@ -413,10 +413,15 @@
       <div><label for="amb-gamma">Gamma (1 = none)</label><input type="number" id="amb-gamma" data-amb="gamma" min="0.5" max="3" step="0.1"></div>
       <div><label for="amb-smoothing">Smoothing (ms)</label><input type="number" id="amb-smoothing" data-amb="smoothingMs" min="0" max="2000" step="10"></div>
       <div><label for="amb-edge">How far into the picture (%)</label><input type="number" id="amb-edge" data-amb="edgeDepth" min="2" max="50" step="1"></div>
+      <div><label for="amb-inset">Skip the outer edge (%)</label><input type="number" id="amb-inset" data-amb="edgeInset" min="0" max="30" step="1"></div>
       <div><label for="amb-fps">Updates a second</label>
         <select id="amb-fps"><option>15</option><option>20</option><option>25</option><option>30</option><option>45</option><option>60</option></select></div>
     </div>
     <label class="check"><input type="checkbox" id="amb-bars"> Skip black bars (letterboxed films light the room from the picture, not the bars)</label>
+    <p class="hint" style="margin:6px 0 0">Each LED averages a patch of the picture by the edge in its direction. "How far
+      into the picture" is the patch's depth; "Skip the outer edge" starts it further in, past bright borders, menus or
+      logos at the very edge. Pale, washed-out colour is usually gamma instead: try 2.2 (WS2812 strips are linear, the
+      picture isn't).</p>
   </section>
 
   <section>

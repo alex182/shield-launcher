@@ -15,7 +15,7 @@ import java.util.List;
  *
  * <pre>
  * {autoStart, fps, units: "in"|"cm",
- *  brightness, saturation, gamma, smoothingMs, edgeDepth, blackBars,
+ *  brightness, saturation, gamma, smoothingMs, edgeDepth, edgeInset, blackBars,
  *  room: {width, depth, height},
  *  tv: {x, z, offset, width, height},
  *  strips: [{name, host, start, count, points: [{x, y, z}, …]}, …]}
@@ -82,6 +82,7 @@ final class AmbilightConfig {
                     .put("gamma", clamp(in.optDouble("gamma", d.gamma), 0.5, 3))
                     .put("smoothingMs", (int) clamp(in.optInt("smoothingMs", d.smoothingMs), 0, 2000))
                     .put("edgeDepth", (int) clamp(in.optInt("edgeDepth", d.edgeDepth), 2, 50))
+                    .put("edgeInset", (int) clamp(in.optInt("edgeInset", d.edgeInset), 0, 30))
                     .put("blackBars", in.optBoolean("blackBars", true))
                     .put("room", room)
                     .put("tv", tv)
@@ -117,7 +118,7 @@ final class AmbilightConfig {
 
     static Ambilight.Tuning tuning(JSONObject c) {
         return new Ambilight.Tuning(c.optInt("brightness"), c.optInt("saturation"), c.optDouble("gamma"),
-                c.optInt("smoothingMs"), c.optInt("edgeDepth"));
+                c.optInt("smoothingMs"), c.optInt("edgeDepth"), c.optInt("edgeInset"));
     }
 
     /**

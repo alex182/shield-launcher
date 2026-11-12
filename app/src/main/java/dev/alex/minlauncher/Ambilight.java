@@ -94,16 +94,18 @@ final class Ambilight {
      * The picture-to-light settings: {@code brightness} and {@code saturation}
      * in percent (100 = as is), {@code gamma} (1 = none), {@code smoothingMs}
      * (time constant of the fade between frames), {@code edgeDepth} (how far
-     * into the picture each LED looks, percent of its width or height).
+     * into the picture each LED looks, percent of its width or height), and
+     * {@code edgeInset} (how much of the outer edge it skips first, the same
+     * units: for pictures with bright borders, menus or logos at the edge).
      */
     static final class Tuning {
-        final int brightness, saturation, smoothingMs, edgeDepth;
+        final int brightness, saturation, smoothingMs, edgeDepth, edgeInset;
         final double gamma;
-        Tuning(int brightness, int saturation, double gamma, int smoothingMs, int edgeDepth) {
+        Tuning(int brightness, int saturation, double gamma, int smoothingMs, int edgeDepth, int edgeInset) {
             this.brightness = brightness; this.saturation = saturation; this.gamma = gamma;
-            this.smoothingMs = smoothingMs; this.edgeDepth = edgeDepth;
+            this.smoothingMs = smoothingMs; this.edgeDepth = edgeDepth; this.edgeInset = edgeInset;
         }
-        static final Tuning DEFAULT = new Tuning(100, 120, 1.0, 150, 15);
+        static final Tuning DEFAULT = new Tuning(100, 120, 1.0, 150, 15, 0);
     }
 
     // -------------------------------------------------------------- geometry
@@ -182,13 +184,14 @@ final class Ambilight {
     /**
      * The pixel box an LED averages, {x0, y0, x1, y1} (x1, y1 exclusive), in
      * a capture whose picture (bars cropped) is {@code crop}: a square-ish
-     * patch touching the border at the LED's point, {@code depth} (0..1) of
-     * the picture's width and height deep.
+     * patch by the border at the LED's point, {@code depth} (0..1) of the
+     * picture's width and height deep, starting {@code inset} (0..1, same
+     * units) in from the border; 0 touches it.
      */
-    static int[] box(double sx, double sy, int[] crop, double depth) {
+    static int[] box(double sx, double sy, int[] crop, double depth, double inset) {
         int cw = crop[2] - crop[0], ch = crop[3] - crop[1];
         double bx = sx * 2 - 1, by = sy * 2 - 1, hs = depth;   // normalised: -1..1 across the picture
-        double cx = bx * (1 - hs), cy = by * (1 - hs);
+        double cx = bx * (1 - hs - 2 * inset), cy = by * (1 - hs - 2 * inset);
         double px = crop[0] + (cx + 1) / 2 * cw, py = crop[1] + (cy + 1) / 2 * ch;
         double hw = Math.max(0.5, hs / 2 * cw), hh = Math.max(0.5, hs / 2 * ch);
         int x0 = clamp((int) Math.floor(px - hw), crop[0], crop[2] - 1);

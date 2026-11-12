@@ -89,16 +89,32 @@ public class AmbilightTest {
     @Test
     public void boxesTouchTheBorderAndStayInside() {
         int[] crop = {0, 10, 160, 80};   // letterboxed: 70 rows of picture
-        int[] right = Ambilight.box(1, 0.5, crop, 0.15);
+        int[] right = Ambilight.box(1, 0.5, crop, 0.15, 0);
         assertEquals(160, right[2]);
         assertEquals(136, right[0]);   // 15% of the width deep
-        int[] top = Ambilight.box(0.5, 0, crop, 0.15);
+        int[] top = Ambilight.box(0.5, 0, crop, 0.15, 0);
         assertEquals(10, top[1]);
-        int[] corner = Ambilight.box(0, 1, crop, 0.15);
+        int[] corner = Ambilight.box(0, 1, crop, 0.15, 0);
         assertEquals(0, corner[0]);
         assertEquals(80, corner[3]);
         for (int[] b : new int[][] {right, top, corner}) {
             assertTrue(b[0] < b[2] && b[1] < b[3]);
+            assertTrue(b[0] >= crop[0] && b[2] <= crop[2] && b[1] >= crop[1] && b[3] <= crop[3]);
+        }
+    }
+
+    @Test
+    public void insetBoxesSkipTheOuterEdgeAndKeepTheirDepth() {
+        int[] crop = {0, 10, 160, 80};
+        int[] right = Ambilight.box(1, 0.5, crop, 0.15, 0.10);
+        assertEquals(144, right[2]);   // 10% of the width (16 px) skipped
+        assertEquals(120, right[0]);   // then the same 15% (24 px) deep
+        int[] top = Ambilight.box(0.5, 0, crop, 0.15, 0.10);
+        assertEquals(17, top[1]);      // 10% of 70 rows in from the bar
+        int[] left = Ambilight.box(0, 0.5, crop, 0.15, 0.10);
+        assertEquals(16, left[0]);
+        assertEquals(40, left[2], 1);  // 40.000…04 rounds up: a pixel either way
+        for (int[] b : new int[][] {right, top, left}) {
             assertTrue(b[0] >= crop[0] && b[2] <= crop[2] && b[1] >= crop[1] && b[3] <= crop[3]);
         }
     }
@@ -182,7 +198,7 @@ public class AmbilightTest {
 
     @Test
     public void colourMixesEdgeAndAverageByWeight() {
-        Ambilight.Tuning plain = new Ambilight.Tuning(100, 100, 1, 0, 15);
+        Ambilight.Tuning plain = new Ambilight.Tuning(100, 100, 1, 0, 15, 0);
         float[] out = new float[3];
         Ambilight.colour(new float[] {200, 0, 0}, new float[] {0, 0, 200}, 0.25, plain, out);
         assertArrayEquals(new float[] {50, 0, 150}, out, 0.01f);
@@ -192,10 +208,10 @@ public class AmbilightTest {
     public void saturationAndBrightness() {
         float[] out = new float[3];
         Ambilight.colour(new float[] {100, 100, 100}, new float[3], 1,
-                new Ambilight.Tuning(50, 300, 1, 0, 15), out);
+                new Ambilight.Tuning(50, 300, 1, 0, 15, 0), out);
         assertArrayEquals(new float[] {50, 50, 50}, out, 0.01f);   // grey has nothing to saturate
         Ambilight.colour(new float[] {200, 100, 100}, new float[3], 1,
-                new Ambilight.Tuning(100, 0, 1, 0, 15), out);
+                new Ambilight.Tuning(100, 0, 1, 0, 15, 0), out);
         assertEquals(out[0], out[1], 0.01f);                       // no saturation: grey
     }
 
