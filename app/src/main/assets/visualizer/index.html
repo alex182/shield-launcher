@@ -68,7 +68,7 @@ const levels = { timeByteArray: wave, timeByteArrayL: wave, timeByteArrayR: wave
  * the fields it expects it does nothing rather than break the presets.
  */
 const melt = (() => {
-  let gl, prog, vao, buf, uScale, uAlpha, uFeather, tex = null, aspect = 1, lastDraw = 0;
+  let gl, prog, vao, buf, uScale, uAlpha, uFeather, uFlip, tex = null, aspect = 1, lastDraw = 0;
   /** The images' ids; the one painted in (or loading), since when; the latest load asked for. */
   let ids = [], current = null, shownAt = 0, wanted = 0;
   /**
@@ -97,11 +97,14 @@ const melt = (() => {
     gl.attachShader(prog, compile(gl.VERTEX_SHADER, `#version 300 es
       in vec2 aPos;
       uniform vec2 uScale;
+      uniform float uFlip;
       out vec2 vUv;
       void main() {
         // butterchurn's frames are stored upside down (row 0 is the top of
-        // the screen), as is the image (row 0 is its top): no flip.
+        // the screen), as is the image (row 0 is its top): no flip there.
+        // The screen has row 0 at the bottom: uFlip = 1 for it.
         vUv = aPos * 0.5 + 0.5;
+        vUv.y = mix(vUv.y, 1.0 - vUv.y, uFlip);
         gl_Position = vec4(aPos * uScale, 0.0, 1.0);
       }`));
     gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, `#version 300 es
@@ -124,6 +127,7 @@ const melt = (() => {
     uScale = gl.getUniformLocation(prog, 'uScale');
     uAlpha = gl.getUniformLocation(prog, 'uAlpha');
     uFeather = gl.getUniformLocation(prog, 'uFeather');
+    uFlip = gl.getUniformLocation(prog, 'uFlip');
     // A vertex array of its own, so butterchurn's attribute setup is untouched.
     const savedBuf = gl.getParameter(gl.ARRAY_BUFFER_BINDING);
     vao = gl.createVertexArray();
@@ -209,36 +213,58 @@ const melt = (() => {
     const a = alpha(now, r);
     lastDraw = now;
     if (a <= 0.001) return;
-    const w = r.texsizeX, h = r.texsizeY, frame = w / h;
+    paint(r.targetFrameBuffer, r.texsizeX, r.texsizeY, a);
+  }
+
+  /**
+   * "Keep visible": the image again, over the finished picture, after
+   * viz.render(). The melt alone can lose it to a preset whose composite
+   * shader recolours, inverts or echoes everything; this layer the preset
+   * never touches, so some of the image always shows, still melting below.
+   */
+  function overlay() {
+    const r = viz.renderer;
+    const keep = Math.max(0, Math.min(100, cfg.imageKeep == null ? 20 : cfg.imageKeep)) / 100;
+    if (!gl || !tex || keep <= 0 || cfg.imagesOn === false || !r || r.outputFXAA) return;
+    paint(null, canvas.width, canvas.height, keep);
+  }
+
+  /** The image into framebuffer {@code fb} (null: the screen), w × h, at alpha a. */
+  function paint(fb, w, h, a) {
+    const frame = w / h;
     // Half extents in clip space: "fit" shows it all, "fill" covers the frame.
     const wider = aspect > frame;
     const sx = (cfg.imageFit === 'fill') === wider ? aspect / frame : 1;
     const sy = (cfg.imageFit === 'fill') === wider ? 1 : frame / aspect;
 
-    if (!after) {
-      after = {
+    // Read live until a frame has rendered: before that it's start-up state.
+    let state = after;
+    if (!state) {
+      state = {
         viewport: gl.getParameter(gl.VIEWPORT),
         blend: gl.isEnabled(gl.BLEND),
         src: gl.getParameter(gl.BLEND_SRC_RGB), dst: gl.getParameter(gl.BLEND_DST_RGB),
         srcA: gl.getParameter(gl.BLEND_SRC_ALPHA), dstA: gl.getParameter(gl.BLEND_DST_ALPHA),
       };
+      if (viz.renderer.frameNum > 0) after = state;
     }
     // Bindings are tracked by WebGL itself: reading them doesn't touch the GPU.
     const saved = Object.assign({
       fb: gl.getParameter(gl.FRAMEBUFFER_BINDING),
       program: gl.getParameter(gl.CURRENT_PROGRAM),
       active: gl.getParameter(gl.ACTIVE_TEXTURE),
-    }, after);
+    }, state);
     gl.activeTexture(gl.TEXTURE0);
     const savedTex = gl.getParameter(gl.TEXTURE_BINDING_2D);
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, r.targetFrameBuffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.viewport(0, 0, w, h);
     gl.useProgram(prog);
     gl.bindVertexArray(vao);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.uniform2f(uScale, sx, sy);
     gl.uniform1f(uAlpha, a);
+    gl.uniform1f(uFlip, fb === null ? 1 : 0);
     // Soft edges 0–100: up to half the shorter side, where it's an oval.
     const soft = Math.max(0, Math.min(100, cfg.imageSoftness == null ? 35 : cfg.imageSoftness)) / 200;
     gl.uniform2f(uFeather, soft * Math.min(1, 1 / aspect), soft * Math.min(1, aspect));
@@ -260,7 +286,7 @@ const melt = (() => {
   /** After a resize: the viewport read once is out of date. */
   function resized() { after = null; }
 
-  return { init, update, draw, resized, presetChanged };
+  return { init, update, draw, overlay, resized, presetChanged };
 })();
 
 function fail(text) {
@@ -394,6 +420,7 @@ function frame(now) {
   }
   melt.draw(now);
   viz.render({ audioLevels: levels });
+  melt.overlay();
 }
 
 try {

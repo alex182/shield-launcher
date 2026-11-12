@@ -315,9 +315,16 @@
         <label for="viz-image-softness">Soft edges <span id="viz-image-softness-value"></span></label>
         <input type="range" id="viz-image-softness" min="0" max="100" step="1">
       </div>
+      <div>
+        <label for="viz-image-keep">Keep visible <span id="viz-image-keep-value"></span></label>
+        <input type="range" id="viz-image-keep" min="0" max="100" step="1">
+      </div>
     </div>
     <p class="hint" style="margin:6px 0 0">Soft edges fades each image out towards its borders so it blends into the
-      visuals instead of sitting in a box: 0 is a hard edge, 100 a soft oval.</p>
+      visuals instead of sitting in a box: 0 is a hard edge, 100 a soft oval. Strength is how much goes into the melt,
+      which some presets wash out whatever the strength (they recolour or smear the whole picture). Keep visible also
+      lays the image over the finished picture, where the preset can't touch it: 0 is melt only, about 20–40 keeps it
+      recognisable, 100 is solid.</p>
 
     <h3 class="sub">Rendering</h3>
     <div class="grid3">
@@ -1330,6 +1337,7 @@ function loadVisualizer() {
   $('viz-image-fit').value = v.imageFit;
   $('viz-image-cycle').value = String(v.imageCycle);
   $('viz-image-softness').value = v.imageSoftness;
+  $('viz-image-keep').value = v.imageKeep;
   strengthLabel();
   renderPresets(v.preset);
   sourceChanged();
@@ -1384,6 +1392,7 @@ function visualizerFields() {
     imageFit: $('viz-image-fit').value,
     imageCycle: parseInt($('viz-image-cycle').value, 10),
     imageSoftness: parseInt($('viz-image-softness').value, 10),
+    imageKeep: parseInt($('viz-image-keep').value, 10),
   };
 }
 
@@ -1463,9 +1472,11 @@ async function uploadMeltImage(file) {
 function strengthLabel() {
   $('viz-image-strength-value').textContent = $('viz-image-strength').value;
   $('viz-image-softness-value').textContent = $('viz-image-softness').value;
+  $('viz-image-keep-value').textContent = $('viz-image-keep').value;
 }
 $('viz-image-strength').addEventListener('input', strengthLabel);
 $('viz-image-softness').addEventListener('input', strengthLabel);
+$('viz-image-keep').addEventListener('input', strengthLabel);
 
 // One at a time, in the order picked, so they keep that order on the TV.
 $('melt-file').onchange = async () => {
