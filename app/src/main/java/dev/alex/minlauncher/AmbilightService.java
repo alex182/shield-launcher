@@ -498,12 +498,12 @@ public class AmbilightService extends Service {
         int[] c = config.optBoolean("blackBars", true) ? bars.update(found) : new int[] {0, 0, cw, ch};
         crop = c;
         if (boxes == null || !java.util.Arrays.equals(c, cropBoxed)) {
-            double depth = tuning.edgeDepth / 100.0;
+            double depth = tuning.edgeDepth / 100.0, inset = tuning.edgeInset / 100.0;
             boxes = new int[map.size()][][];
             for (int s = 0; s < map.size(); s++) {
                 double[][] m = map.get(s);
                 boxes[s] = new int[m.length][];
-                for (int i = 0; i < m.length; i++) boxes[s][i] = Ambilight.box(m[i][0], m[i][1], c, depth);
+                for (int i = 0; i < m.length; i++) boxes[s][i] = Ambilight.box(m[i][0], m[i][1], c, depth, inset);
             }
             cropBoxed = c;
         }

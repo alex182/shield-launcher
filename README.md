@@ -277,12 +277,16 @@ they fade to the whole picture's average.
   was doing by itself. WLED that was off turns on for it, at its last
   brightness, and off again after.
 - **Picture:** the screen is mirrored into a 160×90 capture
-  (`MediaProjection`). Each LED averages a patch touching the border at its
-  point (15% deep by default) through summed-area tables, so the cost doesn't
-  depend on patch size. Letterbox and pillarbox bars are skipped once they've
+  (`MediaProjection`). Each LED averages a patch by the border at its point
+  (15% deep by default) through summed-area tables, so the cost doesn't
+  depend on patch size. *Skip the outer edge* (`edgeInset`, 0–30%, 0 by
+  default) starts the patch that far in, past bright borders, menus or
+  logos at the very edge. Letterbox and pillarbox bars are skipped once they've
   held for 0.7 s, the same top and bottom so subtitles in a bar don't move
   it. Brightness, saturation (120% by default), gamma and smoothing (an
-  exponential fade, 150 ms) are settings.
+  exponential fade, 150 ms) are settings. Gamma is 1 (none) by default, but
+  WS2812 strips are linear and WLED leaves realtime data uncorrected, so
+  pictures look pale; 2.2 matches the screen.
 - **Protected video is black.** Netflix, Disney+, Prime and most paid
   streaming draw on secure surfaces that every screen capture sees as black,
   so the strips go dark for them; the page says so when the picture has
