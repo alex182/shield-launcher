@@ -41,6 +41,12 @@ if [ "${1:-}" = "install" ]; then
             # and capturing it (RECORD_AUDIO).
             adb -s "$d" shell pm grant dev.alex.minlauncher android.permission.RECORD_AUDIO </dev/null
             adb -s "$d" shell pm grant dev.alex.minlauncher android.permission.DUMP </dev/null
+            # ServiceGuard: lets the app switch the quick actions service back on
+            # after a force-stop or a crash, both of which Android leaves off.
+            adb -s "$d" shell pm grant dev.alex.minlauncher android.permission.WRITE_SECURE_SETTINGS </dev/null
+            # The visualizer's media controls: reading the media sessions needs
+            # the app allowed as a notification listener (it reads none).
+            adb -s "$d" shell cmd notification allow_listener dev.alex.minlauncher/dev.alex.minlauncher.MediaListener </dev/null
             # The ambilight's screen capture, granted without the "Start now?" dialog.
             adb -s "$d" shell appops set dev.alex.minlauncher PROJECT_MEDIA allow </dev/null
             # Doze otherwise firewalls the config page while the SHIELD sleeps.

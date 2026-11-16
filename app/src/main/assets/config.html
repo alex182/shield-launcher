@@ -225,10 +225,15 @@
   <section>
     <h2>Music visualizer</h2>
     <p class="hint">Hold play/pause on the remote for Milkdrop visuals (butterchurn) over whatever is playing; hold it again
-      or press Back to close. On the TV: left/right change the preset, up likes (or unlikes) it, down picks one at
+      or press Back to close. On the TV: left/right change the preset, up likes (or unlikes) it, holding up tags it calm, down picks one at
       random, select holds the current one, holding select turns the source images on or off. A short press still plays and pauses, sent on to the app as a media key. Saved changes apply
       straight away, also while it's showing.</p>
     <label class="check"><input type="checkbox" id="visualizer-hold"> Hold play/pause for the visualizer</label>
+    <label class="check"><input type="checkbox" id="viz-calm"> Calm mode</label>
+    <p class="hint" style="margin:0 0 0 26px">For winding down: presets change at most every 90 s and drift slowly into
+      the next, their zoom, spin and swirl run at under half speed, the beat nudges rather than punches, images come in steadily, and the
+      picture is dimmed. Fades in and out over a few seconds when saved while it's showing. On the TV: hold down to
+      switch calm mode for the visualizer and the ambilight together.</p>
     <div class="inline" style="margin-top:10px"><button id="visualizer-show">Show on the TV now</button></div>
     <div class="result" id="visualizer-result"></div>
 
@@ -272,6 +277,12 @@
     <div class="inline" style="margin-top:10px"><button id="viz-play-liked">Play liked presets on the TV</button></div>
     <div class="result" id="viz-liked-result"></div>
     <div id="viz-liked" style="margin-top:6px"></div>
+
+    <h3 class="sub">Calm presets</h3>
+    <p class="hint" style="margin:6px 0 0">Calm mode plays only these (the liked ones among them, when cycling through
+      liked presets). With none tagged, it plays the usual presets. Hold up on the remote to tag the preset showing, or
+      tag it here; tags save straight away.</p>
+    <div id="viz-calm-presets" style="margin-top:6px"></div>
 
     <h3 class="sub">Blending</h3>
     <div class="grid">
@@ -431,6 +442,17 @@
     <div id="amb-strips" style="margin-top:12px"></div>
     <div class="inline"><button id="amb-add">Add strip</button></div>
 
+    <h3 class="sub">Outside the visualizer</h3>
+    <p class="hint" style="margin:0 0 8px">The whole room lights up while the music visualizer is showing. The rest of the
+      time (films, games, the home screen) only this stretch of one strip follows the picture: the rest of its WLED
+      goes dark, and other WLEDs go back to whatever they were doing. LEDs count from 1 at the strip's input end, as
+      "Find its ends" shows.</p>
+    <div class="grid3">
+      <div><label for="amb-seg-strip">Light</label><select id="amb-seg-strip"></select></div>
+      <div><label for="amb-seg-from">From LED</label><input type="number" id="amb-seg-from" min="1" step="1"></div>
+      <div><label for="amb-seg-to">To LED</label><input type="number" id="amb-seg-to" min="1" step="1"></div>
+    </div>
+
     <h3 class="sub">Picture</h3>
     <div class="grid3">
       <div><label for="amb-brightness">Brightness (%)</label><input type="number" id="amb-brightness" data-amb="brightness" min="0" max="100" step="5"></div>
@@ -450,6 +472,12 @@
     <label class="check"><input type="checkbox" id="amb-auto-edge"> Adjust "How far into the picture" and "Skip the outer edge"
       automatically from what's on screen</label>
     <div class="now" id="amb-edge-now" style="margin-top:6px" hidden></div>
+    <label class="check"><input type="checkbox" id="amb-calm"> Calm mode</label>
+    <p class="hint" style="margin:0 0 0 26px">For winding down: 60% of the brightness, saturation at most 85%, a
+      2.5 s fade so cuts and flashes become a slow drift, and broad patches (at least 30% deep, each LED pulled
+      halfway to the whole picture's average) for soft washes of colour instead of detail. The settings above stay as
+      they are, for when it's off; "Each LED's colour" and the automatic edge don't apply while it's on. On the TV: hold
+      down for a second while something plays (or in the visualizer) to switch calm mode for both.</p>
     <label class="check"><input type="checkbox" id="amb-bars"> Skip black bars (letterboxed films light the room from the picture, not the bars)</label>
     <p class="hint" style="margin:6px 0 0">Each LED takes its colour from a patch of the picture by the edge in its
       direction: by default the most vivid colour in it (the strongest hue, averaged over just those pixels), so a busy
@@ -1397,6 +1425,7 @@ function loadVisualizer() {
   $('viz-image-cycle').value = String(v.imageCycle);
   $('viz-image-softness').value = v.imageSoftness;
   $('viz-image-keep').value = v.imageKeep;
+  $('viz-calm').checked = v.calm;
   strengthLabel();
   renderPresets(v.preset);
   sourceChanged();
@@ -1452,6 +1481,7 @@ function visualizerFields() {
     imageCycle: parseInt($('viz-image-cycle').value, 10),
     imageSoftness: parseInt($('viz-image-softness').value, 10),
     imageKeep: parseInt($('viz-image-keep').value, 10),
+    calm: $('viz-calm').checked,
   };
 }
 
@@ -1477,6 +1507,7 @@ async function renderVisualizerNow() {
     `<span class="why">${n.dumpDenied ? 'Can\'t see which apps are playing: grant the launcher DUMP (build.sh install does).' : playing}</span>`;
   vizShowing = n.showing || '';
   vizLiked = n.liked || [];
+  vizCalm = n.calmPresets || [];
   renderLiked();
   renderMeltImages(n.images || []);
   if (typeof n.imagesOn === 'boolean') $('melt-on').checked = n.imagesOn;
@@ -1576,14 +1607,15 @@ $('melt-clear').onclick = async () => {
   renderVisualizerNow();
 };
 
-let vizShowing = '', vizLiked = [];
+let vizShowing = '', vizLiked = [], vizCalm = [];
 
 /** The preset on the TV, to like there, and the liked list, newest first. */
 function renderLiked() {
-  const isLiked = vizLiked.includes(vizShowing);
+  const isLiked = vizLiked.includes(vizShowing), isCalm = vizCalm.includes(vizShowing);
   $('viz-showing').innerHTML = vizShowing
     ? `On the TV: <code>${esc(vizShowing)}</code> <button data-like="${esc(vizShowing)}" data-liked="${!isLiked}"
-        style="margin-left:8px">${isLiked ? '♥ Liked' : '♡ Like'}</button>`
+        style="margin-left:8px">${isLiked ? '♥ Liked' : '♡ Like'}</button>
+        <button data-calm="${esc(vizShowing)}" data-on="${!isCalm}">${isCalm ? '☾ Calm' : 'Tag calm'}</button>`
     : '<span style="color:var(--dim)">The visualizer isn\'t showing.</span>';
   $('viz-play-liked').disabled = !vizLiked.length;
   $('viz-liked').innerHTML = vizLiked.length ? vizLiked.slice().reverse().map(n => `
@@ -1592,6 +1624,21 @@ function renderLiked() {
       <button data-play="${esc(n)}">Play</button>
       <button data-like="${esc(n)}" data-liked="false">Remove</button>
     </div>`).join('') : '<div class="empty">Nothing liked yet.</div>';
+  $('viz-calm-presets').innerHTML = vizCalm.length ? vizCalm.slice().reverse().map(n => `
+    <div class="row">
+      <span class="name">☾ ${esc(n)}</span>
+      <button data-play-one="${esc(n)}">Play</button>
+      <button data-calm="${esc(n)}" data-on="false">Remove</button>
+    </div>`).join('') : '<div class="empty">No calm presets yet: calm mode plays the usual ones.</div>';
+}
+
+async function tagCalm(preset, calm) {
+  const r = await post('/api/visualizer/calm', {preset, calm});
+  if (r.error) { showResult($('viz-liked-result'), {ok: false, message: r.error}); return; }
+  vizShowing = r.showing || '';
+  vizLiked = r.liked || [];
+  vizCalm = r.calmPresets || [];
+  renderLiked();
 }
 
 async function likePreset(preset, liked) {
@@ -1599,6 +1646,7 @@ async function likePreset(preset, liked) {
   if (r.error) { showResult($('viz-liked-result'), {ok: false, message: r.error}); return; }
   vizShowing = r.showing || '';
   vizLiked = r.liked || [];
+  vizCalm = r.calmPresets || [];
   renderLiked();
 }
 
@@ -1607,11 +1655,13 @@ async function playOnTv(body) {
   setTimeout(renderVisualizerNow, 1500);
 }
 
-for (const id of ['viz-showing', 'viz-liked']) {
+for (const id of ['viz-showing', 'viz-liked', 'viz-calm-presets']) {
   $(id).addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.like !== undefined) likePreset(b.dataset.like, b.dataset.liked === 'true');
+    else if (b.dataset.calm !== undefined) tagCalm(b.dataset.calm, b.dataset.on === 'true');
+    else if (b.dataset.playOne) playOnTv({preset: b.dataset.playOne});
     else if (b.dataset.play) playOnTv({playlist: 'liked', preset: b.dataset.play});
   });
 }
@@ -1860,6 +1910,8 @@ function loadAmbilight() {
   $('amb-fps').value = String(A().fps);
   $('amb-bars').checked = A().blackBars;
   $('amb-auto-edge').checked = A().autoEdge;
+  $('amb-calm').checked = A().calm;
+  if (!A().segment) A().segment = {strip: -1, from: 1, to: 1};
   $('amb-colour-from').value = A().colourFrom;
   showAutoEdge();
   renderAmbInputs();
@@ -2312,6 +2364,44 @@ function renderAmbStrips() {
     </div>`;
   }).join('') || '<div class="empty">No strips yet. Add one, then click in the room above to draw its path.</div>';
   renderAmbStats();
+  renderSegment();
+}
+
+/** The segment lit outside the visualizer: a strip (or the whole room, always) and its LEDs. */
+function renderSegment() {
+  const seg = A().segment || (A().segment = {strip: -1, from: 1, to: 1});
+  const st = A().strips[seg.strip];
+  if (!st) seg.strip = -1;
+  $('amb-seg-strip').innerHTML = '<option value="-1">The whole room, always</option>' +
+    A().strips.map((s, i) => `<option value="${i}">Part of ${esc(s.name || 'Strip ' + (i + 1))}</option>`).join('');
+  $('amb-seg-strip').value = String(seg.strip);
+  for (const k of ['from', 'to']) {
+    const el = $('amb-seg-' + k);
+    el.disabled = !st;
+    el.max = st ? st.count : '';
+    el.value = st ? seg[k] : '';
+  }
+}
+
+$('amb-seg-strip').onchange = () => {
+  const seg = A().segment, i = parseInt($('amb-seg-strip').value, 10), st = A().strips[i];
+  seg.strip = st ? i : -1;
+  if (st) { seg.from = 1; seg.to = st.count; }
+  renderSegment();
+  markDirty();
+};
+for (const k of ['from', 'to']) {
+  $('amb-seg-' + k).addEventListener('input', e => {
+    const seg = A().segment, st = A().strips[seg.strip], v = parseInt(e.target.value, 10);
+    if (!st || isNaN(v)) return;
+    seg[k] = Math.max(1, Math.min(st.count, v));
+    markDirty();
+  });
+  $('amb-seg-' + k).addEventListener('change', () => {
+    const seg = A().segment;
+    if (seg.from > seg.to) [seg.from, seg.to] = [seg.to, seg.from];
+    renderSegment();
+  });
 }
 
 function renderAmbStats() {
@@ -2367,6 +2457,9 @@ $('amb-strips').addEventListener('click', async e => {
   if (ds.ambDel !== undefined) {
     if (!confirm(`Delete ${st(ds.ambDel).name}?`)) return;
     A().strips.splice(+ds.ambDel, 1);
+    const seg = A().segment;
+    if (seg && seg.strip === +ds.ambDel) seg.strip = -1;
+    else if (seg && seg.strip > +ds.ambDel) seg.strip--;
     amb.sel = Math.max(0, Math.min(amb.sel, A().strips.length - 1));
   } else if (ds.ambTv !== undefined) {
     const i = +ds.ambTv;
@@ -2392,6 +2485,7 @@ $('amb-strips').addEventListener('input', e => {
     st[ds.sf] = ds.sf === 'start' || ds.sf === 'count' ? Math.max(ds.sf === 'count' ? 1 : 0, parseInt(e.target.value, 10) || 0)
       : e.target.value;
     if (ds.sf === 'name') renderStage();
+    if (ds.sf === 'name' || ds.sf === 'count') renderSegment();
   } else if (ds.pt) {
     const v = parseFloat(e.target.value);
     if (isNaN(v)) return;
@@ -2458,6 +2552,7 @@ $('amb-units').onchange = () => { A().units = $('amb-units').value; renderAmbInp
 $('amb-auto').onchange = () => { A().autoStart = $('amb-auto').checked; };
 $('amb-bars').onchange = () => { A().blackBars = $('amb-bars').checked; };
 $('amb-colour-from').onchange = () => { A().colourFrom = $('amb-colour-from').value; };
+$('amb-calm').onchange = () => { A().calm = $('amb-calm').checked; };
 $('amb-auto-edge').onchange = () => { A().autoEdge = $('amb-auto-edge').checked; showAutoEdge(); };
 
 /** Auto: the two fields are the starting point only, and the TV says what it's using now. */
@@ -2511,7 +2606,9 @@ async function pollAmbilight() {
       ` · ${cap.fps} picture change${cap.fps === 1 ? '' : 's'} a second` +
       (cap.crop[1] > 0 ? ` · letterbox bars skipped (${Math.round(cap.crop[1] / cap.height * 100)}% top and bottom)` : '') +
       (cap.crop[0] > 0 ? ` · pillarbox bars skipped (${Math.round(cap.crop[0] / cap.width * 100)}% each side)` : '') : ''),
-  }[st.state]() + since;
+  }[st.state]() + since +
+    (st.state === 'on' && st.room === 'segment' ? ' · lighting only the segment (the whole room while the visualizer shows)' : '') +
+    (st.state === 'on' && st.room === 'visualizer' ? ' · visualizer showing: lighting the whole room' : '');
   if (cap && cap.black) text += '<span class="why">The picture has been black for a while. If something is playing, it\'s protected video, which can\'t be captured: the strips stay dark for it.</span>';
   if (st.error) text += `<span class="bad">${esc(st.error)}</span>`;
   for (const s of st.strips || []) if (s.error) text += `<span class="bad">${esc(s.name)}: ${esc(s.error)}</span>`;

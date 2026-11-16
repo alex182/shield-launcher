@@ -49,6 +49,7 @@ public class BackgroundDream extends DreamService {
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
+        ServiceGuard.start(this);
         setInteractive(false);
         setFullscreen(true);
         setContentView(R.layout.dream);

@@ -216,6 +216,83 @@ public class AmbilightTest {
     }
 
     @Test
+    public void calmIsDimmerSofterSlowerAndBroader() {
+        Ambilight.Tuning c = new Ambilight.Tuning(100, 120, 2.2, 150, 15, 4).calm();
+        assertEquals(60, c.brightness);
+        assertEquals(Ambilight.Tuning.CALM_SATURATION, c.saturation);
+        assertEquals(Ambilight.Tuning.CALM_SMOOTHING_MS, c.smoothingMs);
+        assertEquals(Ambilight.Tuning.CALM_EDGE_DEPTH, c.edgeDepth);
+        assertEquals(2.2, c.gamma, EPS);
+        assertEquals(4, c.edgeInset);
+        // Settings already calmer than calm's are kept.
+        Ambilight.Tuning gentle = new Ambilight.Tuning(50, 40, 1, 4000, 45, 0).calm();
+        assertEquals(40, gentle.saturation);
+        assertEquals(4000, gentle.smoothingMs);
+        assertEquals(45, gentle.edgeDepth);
+    }
+
+    @Test
+    public void calmIsSavedAndApplied() throws Exception {
+        org.json.JSONObject off = AmbilightConfig.normalize(new org.json.JSONObject());
+        assertEquals(false, off.getBoolean("calm"));
+        assertEquals(Ambilight.Tuning.DEFAULT.smoothingMs, AmbilightConfig.tuning(off).smoothingMs);
+        org.json.JSONObject on = AmbilightConfig.normalize(new org.json.JSONObject().put("calm", true));
+        assertEquals(true, on.getBoolean("calm"));
+        assertEquals(Ambilight.Tuning.CALM_SMOOTHING_MS, AmbilightConfig.tuning(on).smoothingMs);
+    }
+
+    // -------------------------------------------------- outside the visualizer
+
+    private static Ambilight.Layout threeStrips() {
+        return new Ambilight.Layout(new Ambilight.Room(450, 400, 245), TV, Arrays.asList(
+                new Ambilight.Strip("tv", "10.0.0.2", Ambilight.WLED_PORT, 0, 4, Arrays.asList(p(0, 0, 0), p(10, 0, 0))),
+                new Ambilight.Strip("shelf", "10.0.0.2", Ambilight.WLED_PORT, 4, 4, Arrays.asList(p(0, 0, 0), p(10, 0, 0))),
+                new Ambilight.Strip("ceiling", "10.0.0.3", Ambilight.WLED_PORT, 0, 4, Arrays.asList(p(0, 0, 0), p(10, 0, 0)))));
+    }
+
+    @Test
+    public void noSegmentLightsEverything() {
+        assertArrayEquals(new int[] {Ambilight.SEND_ALL, Ambilight.SEND_ALL, Ambilight.SEND_ALL},
+                Ambilight.plan(threeStrips(), null));
+    }
+
+    @Test
+    public void segmentDarkensItsControllerAndLetsOthersGo() {
+        assertArrayEquals(new int[] {Ambilight.SEND_SEGMENT, Ambilight.SEND_DARK, Ambilight.SEND_NONE},
+                Ambilight.plan(threeStrips(), new Ambilight.Segment(0, 1, 2)));
+    }
+
+    @Test
+    public void maskKeepsOnlyTheSegment() {
+        float[] t = {1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4}, out = new float[12];
+        Ambilight.Segment seg = new Ambilight.Segment(0, 1, 2);
+        Ambilight.mask(t, Ambilight.SEND_SEGMENT, seg, out);
+        assertArrayEquals(new float[] {0, 0, 0, 2, 2, 2, 3, 3, 3, 0, 0, 0}, out, 0);
+        Ambilight.mask(t, Ambilight.SEND_DARK, seg, out);
+        assertArrayEquals(new float[12], out, 0);
+        Ambilight.mask(t, Ambilight.SEND_ALL, seg, out);
+        assertArrayEquals(t, out, 0);
+        Ambilight.mask(t, Ambilight.SEND_SEGMENT, new Ambilight.Segment(0, 2, 99), out);   // past the end
+        assertArrayEquals(new float[] {0, 0, 0, 0, 0, 0, 3, 3, 3, 4, 4, 4}, out, 0);
+    }
+
+    @Test
+    public void segmentIsKeptInRangeAndOneBasedWhenSaved() throws Exception {
+        org.json.JSONObject strip = new org.json.JSONObject().put("host", "10.0.0.2").put("count", 60);
+        org.json.JSONObject in = new org.json.JSONObject().put("strips", new org.json.JSONArray().put(strip))
+                .put("segment", new org.json.JSONObject().put("strip", 0).put("from", 10).put("to", 500));
+        org.json.JSONObject c = AmbilightConfig.normalize(in);
+        assertEquals(60, c.getJSONObject("segment").getInt("to"));
+        Ambilight.Segment seg = AmbilightConfig.segment(c);
+        assertEquals(9, seg.from);
+        assertEquals(59, seg.to);
+        // A strip that's gone: the whole room, always.
+        in.getJSONObject("segment").put("strip", 3);
+        assertNull(AmbilightConfig.segment(AmbilightConfig.normalize(in)));
+        assertNull(AmbilightConfig.segment(AmbilightConfig.normalize(new org.json.JSONObject())));
+    }
+
+    @Test
     public void smoothingIsFrameRateIndependent() {
         float[] a = {0}, b = {0};
         Ambilight.smooth(a, new float[] {100}, 100, 100);
