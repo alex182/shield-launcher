@@ -104,6 +104,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        ServiceGuard.start(this);
         setContentView(R.layout.activity_main);
         content = findViewById(R.id.content);
         rows = findViewById(R.id.rows);
@@ -146,6 +147,7 @@ public class MainActivity extends Activity {
         background.start();
         agenda.start();
         RadarOverlay.setHomeShowing(true);
+        ServiceGuard.check();
     }
 
     @Override

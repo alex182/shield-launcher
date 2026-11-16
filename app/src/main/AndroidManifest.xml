@@ -15,6 +15,10 @@
     <uses-permission android:name="android.permission.DUMP"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- ServiceGuard: switches the quick actions service back on after a
+         force-stop or a crash. Granted over adb by build.sh install. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- Ambilight: a foreground service holds the screen capture (Android 10+
          requires one of type mediaProjection). -->
@@ -84,6 +88,19 @@
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:theme="@style/Invisible" />
+
+        <!-- The visualizer's media controls: allowed as a notification
+             listener (over adb, by build.sh install), the app can read the
+             media sessions. It reads no notifications. -->
+        <service
+            android:name=".MediaListener"
+            android:label="@string/app_name"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <!-- Screensaver: the background with the clock. Picked in Settings →
              Device Preferences → Screen saver, or over adb; see README. -->

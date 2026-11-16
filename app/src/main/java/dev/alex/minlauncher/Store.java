@@ -53,6 +53,7 @@ final class Store {
     static final String KEY_VISUALIZER_STATUS = "visualizer_status";   // JSON: what it listens to, written by VisualizerOverlay
     static final String KEY_VISUALIZER_LIKED = "visualizer_liked";     // JSON array of preset names, liked on the TV or the page
     static final String KEY_VISUALIZER_SHOWING = "visualizer_showing"; // the preset on screen now, "" when closed
+    static final String KEY_VISUALIZER_CALM_PRESETS = "visualizer_calm_presets";   // JSON array of preset names calm mode keeps to
     static final String KEY_VISUALIZER_IMAGES = "visualizer_images";   // source images mixed in or not, toggled on the TV or the page
     static final String KEY_AMBILIGHT = "ambilight";           // JSON, see AmbilightConfig
     static final String KEY_MODE_LIGHTS = "mode_lights";       // JSON, see ModeLights: room lights for the visualizer and ambilight
@@ -247,6 +248,8 @@ final class Store {
      *       oval);</li>
      *   <li>{@code imageKeep}: 0 to 100, how strongly the image is also laid
      *       over the finished picture, where the preset can't wash it out.</li>
+     *   <li>{@code calm}: calm mode: slower presets and blends, softened
+     *       reactions to the beat, a dimmer picture (see the TV page).</li>
      * </ul>
      */
     JSONObject visualizer() {
@@ -280,7 +283,8 @@ final class Store {
                     .put("imageFit", VISUALIZER_IMAGE_FITS.contains(imageFit) ? imageFit : "fit")
                     .put("imageCycle", VISUALIZER_IMAGE_CYCLES.contains(imageCycle) ? imageCycle : 0)
                     .put("imageSoftness", clamp(in.optInt("imageSoftness", 35), 0, 100))
-                    .put("imageKeep", clamp(in.optInt("imageKeep", 20), 0, 100));
+                    .put("imageKeep", clamp(in.optInt("imageKeep", 20), 0, 100))
+                    .put("calm", in.optBoolean("calm", false));
         } catch (JSONException e) {
             throw new IllegalStateException(e);   // only put() of finite values above
         }
@@ -306,12 +310,32 @@ final class Store {
 
     /** Likes or unlikes a preset; the TV and the page can both call this at once. */
     synchronized void setVisualizerLiked(String preset, boolean liked) {
-        JSONArray old = visualizerLiked(), out = new JSONArray();
-        for (int i = 0; i < old.length(); i++) {
-            if (!old.optString(i).equals(preset)) out.put(old.optString(i));
+        prefs.edit().putString(KEY_VISUALIZER_LIKED, with(visualizerLiked(), preset, liked).toString()).apply();
+    }
+
+    /**
+     * Presets tagged calm, oldest first: calm mode cycles through only these
+     * (all of them while none are). Kept apart from {@link #visualizer()},
+     * like the likes.
+     */
+    JSONArray visualizerCalmPresets() {
+        try { return new JSONArray(prefs.getString(KEY_VISUALIZER_CALM_PRESETS, "[]")); }
+        catch (JSONException e) { return new JSONArray(); }
+    }
+
+    /** Tags a preset calm or not; from the TV (hold up) or the page. */
+    synchronized void setVisualizerCalmPreset(String preset, boolean calm) {
+        prefs.edit().putString(KEY_VISUALIZER_CALM_PRESETS, with(visualizerCalmPresets(), preset, calm).toString()).apply();
+    }
+
+    /** {@code list} without {@code name}, and with it at the end if {@code in}. */
+    private static JSONArray with(JSONArray list, String name, boolean in) {
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < list.length(); i++) {
+            if (!list.optString(i).equals(name)) out.put(list.optString(i));
         }
-        if (liked) out.put(preset);
-        prefs.edit().putString(KEY_VISUALIZER_LIKED, out.toString()).apply();
+        if (in) out.put(name);
+        return out;
     }
 
     /**
@@ -340,6 +364,26 @@ final class Store {
 
     void setAmbilight(JSONObject settings) {
         prefs.edit().putString(KEY_AMBILIGHT, AmbilightConfig.normalize(settings).toString()).apply();
+    }
+
+    /**
+     * Calm mode from the remote (hold down): one switch for both, so the
+     * room and the visualizer match. Flips the one on screen (the visualizer
+     * if {@code visualizerShowing}, else the ambilight) and sets the other the
+     * same. Returns the new state. The config page sets them apart.
+     */
+    boolean toggleCalm(boolean visualizerShowing) {
+        JSONObject a = ambilight(), v = visualizer();
+        boolean on = !(visualizerShowing ? v.optBoolean("calm") : a.optBoolean("calm"));
+        try {
+            a.put("calm", on);
+            v.put("calm", on);
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+        setAmbilight(a);
+        prefs.edit().putString(KEY_VISUALIZER, v.toString()).apply();
+        return on;
     }
 
     /** Lights switched as the visualizer or the ambilight starts and ends; see {@link ModeLights}. */

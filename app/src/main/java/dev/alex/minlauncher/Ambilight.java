@@ -106,6 +106,68 @@ final class Ambilight {
             this.smoothingMs = smoothingMs; this.edgeDepth = edgeDepth; this.edgeInset = edgeInset;
         }
         static final Tuning DEFAULT = new Tuning(100, 120, 1.0, 150, 15, 0);
+
+        /** Calm mode's brightness, as a share of the setting. */
+        static final double CALM_BRIGHTNESS = 0.6;
+        /** Calm mode's saturation ceiling, percent: soft colours, never neon. */
+        static final int CALM_SATURATION = 85;
+        /** Calm mode's fade, at least this slow: cuts and flashes become a drift. */
+        static final int CALM_SMOOTHING_MS = 2500;
+        /** Calm mode's patch depth, at least this deep: broad washes, not detail. */
+        static final int CALM_EDGE_DEPTH = 30;
+        /** Calm mode pulls every LED this much further towards the whole picture's average. */
+        static final double CALM_DETAIL = 0.5;
+
+        /**
+         * These settings made calm: dimmer, softer colour, a slow fade and
+         * broad patches. Gamma and the inset are kept.
+         */
+        Tuning calm() {
+            return new Tuning((int) Math.round(brightness * CALM_BRIGHTNESS), Math.min(saturation, CALM_SATURATION),
+                    gamma, Math.max(smoothingMs, CALM_SMOOTHING_MS), Math.max(edgeDepth, CALM_EDGE_DEPTH), edgeInset);
+        }
+    }
+
+    /**
+     * The part of the room lit outside the visualizer: LEDs {@code from} to
+     * {@code to} (0-based, inclusive, from the data input end) of strip
+     * {@code strip}. While the visualizer shows, the whole room is lit.
+     */
+    static final class Segment {
+        final int strip, from, to;
+        Segment(int strip, int from, int to) { this.strip = strip; this.from = from; this.to = to; }
+    }
+
+    /** What a strip is sent: every LED, only the segment's (the rest black), all black, or nothing. */
+    static final int SEND_ALL = 0, SEND_SEGMENT = 1, SEND_DARK = 2, SEND_NONE = 3;
+
+    /**
+     * Per strip, what it's sent when only {@code seg} is lit (all
+     * {@link #SEND_ALL} for none). Strips on the segment's own controller go
+     * black, as WLED in realtime mode would otherwise hold whatever they
+     * last showed; other controllers are left alone, so after the stream's
+     * timeout they go back to what they were doing.
+     */
+    static int[] plan(Layout l, Segment seg) {
+        int n = l.strips.size();
+        int[] p = new int[n];
+        if (seg == null || seg.strip < 0 || seg.strip >= n) return p;
+        Strip lit = l.strips.get(seg.strip);
+        for (int i = 0; i < n; i++) {
+            Strip s = l.strips.get(i);
+            p[i] = i == seg.strip ? SEND_SEGMENT
+                    : s.host.equalsIgnoreCase(lit.host) && s.port == lit.port ? SEND_DARK : SEND_NONE;
+        }
+        return p;
+    }
+
+    /** {@code target} (3 values a LED) into {@code out} as strip mode {@code send} wants it lit. */
+    static void mask(float[] target, int send, Segment seg, float[] out) {
+        if (send == SEND_ALL) { System.arraycopy(target, 0, out, 0, target.length); return; }
+        java.util.Arrays.fill(out, 0);
+        if (send != SEND_SEGMENT) return;
+        int from = Math.max(0, seg.from) * 3, to = Math.min(target.length / 3 - 1, seg.to) * 3 + 3;
+        if (from < to) System.arraycopy(target, from, out, from, to - from);
     }
 
     // -------------------------------------------------------------- geometry

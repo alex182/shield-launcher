@@ -70,6 +70,9 @@ public class QuickMenuService extends AccessibilityService {
     private static final long SLEEP_AFTER_HOME_MS = 1500;
     /** Play/pause held this long toggles the visualizer. */
     private static final long VISUALIZER_HOLD_MS = 1000;
+    /** Down held this long over an app, with the ambilight on and something playing: calm mode. */
+    private static final long CALM_HOLD_MS = 1000;
+    private boolean calmFired;          // this hold of down has already toggled calm mode
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable holdReached = () -> { holdFired = true; showMenu(); };
@@ -125,6 +128,8 @@ public class QuickMenuService extends AccessibilityService {
 
     @Override
     protected void onServiceConnected() {
+        ServiceGuard.start(this);
+        ServiceGuard.setConnected(true);
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         store = new Store(this);
         cameras = new CameraOverlay(this, wm, store);
@@ -165,6 +170,7 @@ public class QuickMenuService extends AccessibilityService {
                 && (playPauseDown || store.visualizerHold())) {
             return onPlayPause(event);
         }
+        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) watchCalmHold(event);
         if (event.getKeyCode() != NETFLIX_KEY) {
             // The full-screen radar has no focus (so playback carries on under
             // it); the app underneath must not act on keys meant for the radar.
@@ -249,6 +255,24 @@ public class QuickMenuService extends AccessibilityService {
     }
 
     /**
+     * Down held over an app: calm mode on or off (the visualizer handles its
+     * own). Only watched, never held back: an accessibility service can't
+     * send an arrow key on afterwards, so the app sees the press as usual.
+     * Only while the ambilight is on and something is playing, so holding
+     * down to scroll through a menu doesn't switch it.
+     */
+    private void watchCalmHold(KeyEvent event) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN) return;
+        if (event.getRepeatCount() == 0) { calmFired = false; return; }
+        if (calmFired || event.getEventTime() - event.getDownTime() < CALM_HOLD_MS) return;
+        if (visualizer.isShowing() || panel != null || cameras.isShowing() || lights.isShowing()) return;
+        if (!AmbilightService.isOn()) return;
+        if (!((AudioManager) getSystemService(AUDIO_SERVICE)).isMusicActive()) return;
+        calmFired = true;
+        toast(store.toggleCalm(false) ? "Calm mode on" : "Calm mode off");
+    }
+
+    /**
      * Held: the visualizer, on or off. Released sooner: an ordinary play/pause,
      * sent on through the media session. That reaches every player with one
      * (all the music and video apps here), but not one that only reads keys
@@ -311,6 +335,7 @@ public class QuickMenuService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        ServiceGuard.setConnected(false);
         handler.removeCallbacks(holdReached);
         handler.removeCallbacks(singlePress);
         handler.removeCallbacks(visualizerHoldReached);

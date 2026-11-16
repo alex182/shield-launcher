@@ -16,7 +16,8 @@ import java.util.List;
  * <pre>
  * {autoStart, fps, units: "in"|"cm",
  *  brightness, saturation, gamma, smoothingMs, edgeDepth, edgeInset, autoEdge,
- *  colourFrom: "vivid"|"mean", blackBars,
+ *  colourFrom: "vivid"|"mean", blackBars, calm,
+ *  segment: {strip: -1 (whole room always) | index, from, to},   (LEDs, 1-based)
  *  room: {width, depth, height},
  *  tv: {x, z, offset, width, height},
  *  strips: [{name, host, start, count, points: [{x, y, z}, …]}, …]}
@@ -69,6 +70,15 @@ final class AmbilightConfig {
                         .put("points", pts));
             }
 
+            // Outside the visualizer, only these LEDs of one strip; -1: the whole room always.
+            JSONObject segIn = obj(in, "segment");
+            int segStrip = segIn.optInt("strip", -1);
+            if (segStrip < 0 || segStrip >= strips.length()) segStrip = -1;
+            int segCount = segStrip < 0 ? MAX_LEDS : strips.getJSONObject(segStrip).getInt("count");
+            int segFrom = (int) clamp(segIn.optInt("from", 1), 1, segCount);
+            int segTo = (int) clamp(segIn.optInt("to", segCount), segFrom, segCount);
+            JSONObject segment = new JSONObject().put("strip", segStrip).put("from", segFrom).put("to", segTo);
+
             int fps = in.optInt("fps", DEFAULT_FPS);
             boolean known = false;
             for (int f : FPS) known |= f == fps;
@@ -86,6 +96,8 @@ final class AmbilightConfig {
                     .put("edgeInset", (int) clamp(in.optInt("edgeInset", d.edgeInset), 0, 30))
                     .put("blackBars", in.optBoolean("blackBars", true))
                     .put("autoEdge", in.optBoolean("autoEdge", false))
+                    .put("calm", in.optBoolean("calm", false))
+                    .put("segment", segment)
                     .put("colourFrom", "mean".equals(in.optString("colourFrom")) ? "mean" : "vivid")
                     .put("room", room)
                     .put("tv", tv)
@@ -119,9 +131,18 @@ final class AmbilightConfig {
                 strips);
     }
 
+    /** The segment lit outside the visualizer, or null for the whole room always. */
+    static Ambilight.Segment segment(JSONObject c) {
+        JSONObject s = c.optJSONObject("segment");
+        if (s == null || s.optInt("strip", -1) < 0) return null;
+        return new Ambilight.Segment(s.optInt("strip"), s.optInt("from", 1) - 1, s.optInt("to", 1) - 1);
+    }
+
+    /** The tuning as set; calm mode's ({@link Ambilight.Tuning#calm}) when that's on. */
     static Ambilight.Tuning tuning(JSONObject c) {
-        return new Ambilight.Tuning(c.optInt("brightness"), c.optInt("saturation"), c.optDouble("gamma"),
+        Ambilight.Tuning t = new Ambilight.Tuning(c.optInt("brightness"), c.optInt("saturation"), c.optDouble("gamma"),
                 c.optInt("smoothingMs"), c.optInt("edgeDepth"), c.optInt("edgeInset"));
+        return c.optBoolean("calm") ? t.calm() : t;
     }
 
     /**

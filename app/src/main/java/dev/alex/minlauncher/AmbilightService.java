@@ -90,6 +90,8 @@ public class AmbilightService extends Service {
     private static volatile AmbilightService instance;
     /** Why the last start failed, for the page; "" when it didn't. */
     private static volatile String lastError = "";
+    /** The visualizer is showing: the whole room is lit, not just the segment. */
+    private static volatile boolean visualizerShowing;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private HandlerThread thread;
@@ -130,6 +132,9 @@ public class AmbilightService extends Service {
     private long testStarted;
 
     private float[][] target, shown;    // per strip, 3 floats a LED
+    private float[][] masked;           // target with the LEDs not lit now set to black
+    private volatile Ambilight.Segment segment;  // lit outside the visualizer; null: the whole room always
+    private int[] plan;                 // per strip, Ambilight.SEND_*, outside the visualizer
     private volatile byte[][] out;      // per strip, what was last sent
     private volatile String[] stripErrors;
     private InetAddress[] addresses;
@@ -146,6 +151,7 @@ public class AmbilightService extends Service {
     private int[][][] boxes;           // per strip, per LED
     private int[] cropBoxed;           // the crop the boxes were made for
     private Ambilight.AutoEdge autoEdge;   // null when the depth and skip are as set
+    private boolean calm;               // Ambilight.Tuning.calm(), and LEDs pulled towards the average
     private boolean vivid;              // each LED's most vivid colour, not its patch's mean
     private byte[] hueBin, chromaOf;    // per capture pixel, for vivid
     private final double[] vividScratch = new double[Ambilight.HUE_BINS * 4];
@@ -192,6 +198,12 @@ public class AmbilightService extends Service {
     }
 
     /** On: following the screen (even while it is off and paused) or testing. */
+    /** From {@link VisualizerOverlay}: it opened or closed. The room follows within a frame. */
+    static void visualizer(boolean showing) { visualizerShowing = showing; }
+
+    /** The whole room is lit now: the visualizer is showing, or there's no segment. */
+    private boolean wholeRoom() { return segment == null || visualizerShowing; }
+
     static boolean isOn() {
         AmbilightService s = instance;
         return s != null && (s.wantCapture || s.mode == Mode.TEST);
@@ -407,6 +419,9 @@ public class AmbilightService extends Service {
         int n = layout.strips.size();
         target = new float[n][];
         shown = new float[n][];
+        masked = new float[n][];
+        segment = AmbilightConfig.segment(c);
+        plan = Ambilight.plan(layout, segment);
         byte[][] o = new byte[n][];
         String[] errors = new String[n];
         addresses = new InetAddress[n];
@@ -414,6 +429,7 @@ public class AmbilightService extends Service {
             Ambilight.Strip s = layout.strips.get(i);
             target[i] = new float[s.count * 3];
             shown[i] = new float[s.count * 3];
+            masked[i] = new float[s.count * 3];
             o[i] = new byte[s.count * 3];
             if (s.host.isEmpty()) {
                 errors[i] = "No WLED address";
@@ -429,8 +445,11 @@ public class AmbilightService extends Service {
         stripErrors = errors;
         boxes = null;
         cropBoxed = null;
-        vivid = !"mean".equals(config.optString("colourFrom"));
-        autoEdge = config.optBoolean("autoEdge") ? new Ambilight.AutoEdge(tuning.edgeDepth, tuning.edgeInset) : null;
+        // Calm: patch averages and fixed, broad patches; the vivid pick and
+        // the auto edge would chase detail calm is there to smooth over.
+        calm = config.optBoolean("calm");
+        vivid = !calm && !"mean".equals(config.optString("colourFrom"));
+        autoEdge = !calm && config.optBoolean("autoEdge") ? new Ambilight.AutoEdge(tuning.edgeDepth, tuning.edgeInset) : null;
         edgeDepthNow = autoEdge != null ? autoEdge.depth() : tuning.edgeDepth;
         edgeInsetNow = autoEdge != null ? autoEdge.inset() : tuning.edgeInset;
         lastFrameAt = 0;
@@ -459,9 +478,17 @@ public class AmbilightService extends Service {
             blackSince = 0;
             black = false;
             try {
-                display = projection.createVirtualDisplay(TAG, cw, ch,
-                        getResources().getDisplayMetrics().densityDpi,
-                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.getSurface(), null, worker);
+                display = mirror(DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC);
+            } catch (SecurityException e) {
+                Log.w(TAG, "no public mirror, private instead: " + e.getMessage());
+                try {
+                    display = mirror(0);
+                } catch (RuntimeException e2) {
+                    failed("Can't mirror the screen: " + e2.getMessage());
+                    reader.close();
+                    reader = null;
+                    return;
+                }
             } catch (RuntimeException e) {
                 failed("Can't mirror the screen: " + e.getMessage());
                 reader.close();
@@ -474,6 +501,20 @@ public class AmbilightService extends Service {
     }
 
     /** {@code pause}: the screen went off; it picks up again when it comes on. */
+    /**
+     * The 160-pixel mirror of the screen, into {@link #reader}. Public, so
+     * other apps can look it up: on the SHIELD every MediaCodec playing video
+     * listens for display changes and reads the changed display's info, and a
+     * private display's is null to them, so a private mirror created while
+     * a player runs (the ambilight started mid-film) crashes the player
+     * (Wholphin, 2026-11-15: NullPointerException in
+     * MediaCodec$1.onDisplayChanged). {@code extra} is added to AUTO_MIRROR.
+     */
+    private VirtualDisplay mirror(int extra) {
+        return projection.createVirtualDisplay(TAG, cw, ch, getResources().getDisplayMetrics().densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR | extra, reader.getSurface(), null, worker);
+    }
+
     private void stopCapture(boolean pause) {
         if (pause && mode == Mode.CAPTURE) paused = true;
         if (pause && mode == Mode.TEST) return;   // a test runs on, screen or not
@@ -561,7 +602,8 @@ public class AmbilightService extends Service {
                 if (!vivid || !Ambilight.dominant(frame, cw, stride, hueBin, chromaOf, boxes[s][i], vividScratch, edge)) {
                     Ambilight.average(sumR, sumG, sumB, cw, boxes[s][i], edge);
                 }
-                Ambilight.colour(edge, avg, m[i][2], tuning, col);
+                double weight = calm ? m[i][2] * (1 - Ambilight.Tuning.CALM_DETAIL) : m[i][2];
+                Ambilight.colour(edge, avg, weight, tuning, col);
                 t[i * 3] = col[0]; t[i * 3 + 1] = col[1]; t[i * 3 + 2] = col[2];
             }
         }
@@ -580,11 +622,24 @@ public class AmbilightService extends Service {
         }
         byte[][] o = out;
         String[] errors = stripErrors;
+        // A test lights everything; following the screen, the segment alone
+        // unless the visualizer is showing. Masked before the fade, so the
+        // room fades out to the segment and back.
+        boolean whole = mode == Mode.TEST || wholeRoom();
         for (int s = 0; s < target.length; s++) {
-            Ambilight.smooth(shown[s], target[s], dt, tau);
+            int send = whole ? Ambilight.SEND_ALL : plan[s];
+            Ambilight.mask(target[s], send, segment, masked[s]);
+            Ambilight.smooth(shown[s], masked[s], dt, tau);
             byte[] b = o[s];
-            for (int i = 0; i < b.length; i++) b[i] = (byte) Math.round(shown[s][i]);
+            boolean lit = false;
+            for (int i = 0; i < b.length; i++) {
+                b[i] = (byte) Math.round(shown[s][i]);
+                lit |= b[i] != 0;
+            }
             if (addresses[s] == null || socket == null) continue;
+            // A controller the segment isn't on is let go once it has faded
+            // out: WLED goes back to what it was doing after the timeout.
+            if (send == Ambilight.SEND_NONE && !lit) { errors[s] = null; continue; }
             Ambilight.Strip st = layout.strips.get(s);
             try {
                 for (byte[] p : Ambilight.dnrgb(st.start, b, Ambilight.WLED_TIMEOUT_S)) {
@@ -627,7 +682,8 @@ public class AmbilightService extends Service {
         AmbilightService s = instance;
         JSONObject o = new JSONObject().put("error", lastError);
         if (s == null || s.mode == Mode.OFF) return o.put("state", "off");
-        o.put("state", s.mode == Mode.TEST ? "test" : s.paused ? "paused" : "on").put("since", s.since);
+        o.put("state", s.mode == Mode.TEST ? "test" : s.paused ? "paused" : "on").put("since", s.since)
+                .put("room", s.segment == null ? "always" : visualizerShowing ? "visualizer" : "segment");
         if (s.mode == Mode.TEST) o.put("pattern", s.pattern).put("strip", s.chaseStrip);
         int[] c = s.crop;
         if (s.mode == Mode.CAPTURE && c != null) {

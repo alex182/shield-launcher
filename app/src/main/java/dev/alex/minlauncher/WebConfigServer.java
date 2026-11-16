@@ -180,6 +180,18 @@ final class WebConfigServer implements Runnable {
                 JSONObject o = new JSONObject(text);
                 store.setVisualizerLiked(o.getString("preset"), o.getBoolean("liked"));
                 send(client, 200, "application/json", visualizerNow().toString());
+            } else if (method.equals("POST") && path.equals("/api/visualizer/calm")) {
+                // Saved at once too: the TV tags presets calm (hold up).
+                JSONObject o = new JSONObject(text);
+                store.setVisualizerCalmPreset(o.getString("preset"), o.getBoolean("calm"));
+                send(client, 200, "application/json", visualizerNow().toString());
+            } else if (method.equals("GET") && path.equals("/api/crashlog")) {
+                java.io.File log = ServiceGuard.crashLog(context);
+                String crashes = "No crashes logged.\n";
+                if (log.exists()) {
+                    try (InputStream f = new java.io.FileInputStream(log)) { crashes = HomeAssistant.readAll(f); }
+                }
+                send(client, 200, "text/plain; charset=utf-8", crashes);
             } else if (method.equals("GET") && path.equals("/api/state")) {
                 send(client, 200, "application/json", state().toString());
             } else if (method.equals("POST") && path.equals("/api/state")) {
@@ -397,6 +409,7 @@ final class WebConfigServer implements Runnable {
                 .put("status", new JSONObject(store.visualizerStatus()))
                 .put("showing", store.visualizerShowing())
                 .put("liked", store.visualizerLiked())
+                .put("calmPresets", store.visualizerCalmPresets())
                 .put("images", new JSONArray(VisualizerImage.ids(context)))
                 .put("imagesOn", store.visualizerImages())
                 .put("playing", playing)

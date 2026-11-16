@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-  canvas { display: block; width: 100vw; height: 100vh; }
+  canvas { display: block; width: 100vw; height: 100vh; transition: opacity 3s; }
+  body.calm canvas { opacity: 0.7; }
   #label {
     position: fixed; left: 48px; bottom: 40px; max-width: 70vw;
     font: 15px sans-serif; color: #e8e8e8; text-shadow: 0 0 6px #000, 0 0 2px #000;
@@ -17,6 +18,36 @@
     position: fixed; right: 48px; bottom: 40px; max-width: 40vw; text-align: right;
     font: 13px sans-serif; color: #9a9a9a; text-shadow: 0 0 6px #000;
   }
+  /* Media controls: up for a few seconds on a new track, a pause or Menu. */
+  #media {
+    position: fixed; left: 50%; bottom: 36px; transform: translate(-50%, 12px);
+    display: flex; align-items: center; gap: 16px; padding: 12px 18px 12px 12px;
+    width: min(620px, 80vw); box-sizing: border-box;
+    background: rgba(10, 10, 12, 0.72); border-radius: 14px;
+    font: 14px sans-serif; color: #e8e8e8;
+    opacity: 0; transition: opacity 0.5s, transform 0.5s; pointer-events: none;
+  }
+  #media.on { opacity: 1; transform: translate(-50%, 0); }
+  body.media-on #label, body.media-on #note { opacity: 0; }
+  #m-art { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; background: #222; flex: none; }
+  #m-art[hidden] { display: none; }
+  #m-text { flex: 1; min-width: 0; }
+  #m-title { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #m-sub { color: #9a9a9a; font-size: 13px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #m-bar { height: 3px; background: rgba(255, 255, 255, 0.18); border-radius: 2px; margin-top: 9px; overflow: hidden; }
+  #m-pos { height: 100%; width: 0; background: #e8e8e8; }
+  #m-times { display: flex; justify-content: space-between; color: #9a9a9a; font-size: 11px; margin-top: 4px; }
+  #m-buttons { display: flex; gap: 6px; flex: none; }
+  /* Popped up by itself it's only information: buttons there would look as if
+     Select pressed them, when Select holds the preset. Menu brings them. */
+  #media:not(.open) #m-buttons { display: none; }
+  #m-buttons div {
+    width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    color: #e8e8e8; transition: background 0.15s, color 0.15s;
+  }
+  #m-buttons svg { width: 24px; height: 24px; fill: currentColor; }
+  #media.open #m-buttons div.focus { background: #e8e8e8; color: #111; }
+  #m-hint { color: #9a9a9a; font-size: 11px; margin-top: 4px; }
   #error {
     position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
     font: 18px sans-serif; color: #9a9a9a; text-align: center; padding: 0 15vw;
@@ -28,6 +59,21 @@
 <div id="label"></div>
 <div id="note"></div>
 <div id="error"></div>
+<div id="media">
+  <img id="m-art" alt="" hidden>
+  <div id="m-text">
+    <div id="m-title"></div>
+    <div id="m-sub"></div>
+    <div id="m-bar"><div id="m-pos"></div></div>
+    <div id="m-times"><span id="m-at"></span><span id="m-len"></span></div>
+    <div id="m-hint"></div>
+  </div>
+  <div id="m-buttons">
+    <div data-a="prev"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></div>
+    <div data-a="toggle"><svg viewBox="0 0 24 24"><path id="m-toggle" d="M8 5v14l11-7z"/></svg></div>
+    <div data-a="next"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6z"/></svg></div>
+  </div>
+</div>
 <script src="butterchurn.min.js"></script>
 <script src="butterchurnPresets.min.js"></script>
 <script>
@@ -39,6 +85,7 @@
 // playlist on "liked", the timer and the arrows keep to the liked presets.
 // A source image, if one is uploaded, is fed into the presets' feedback
 // (see `melt`) for them to warp, smear and mix like anything they drew.
+// Calm mode (cfg.calm) slows and softens all of it; see `calm`.
 'use strict';
 const SAMPLES = 1024;
 
@@ -46,7 +93,7 @@ const canvas = document.getElementById('canvas');
 const label = document.getElementById('label');
 const note = document.getElementById('note');
 let viz, names, presets, current = '', held = false, nextAt = 0, labelTimer = 0;
-let cfg = {}, lastFrame = 0, lastCheck = 0;
+let cfg = {}, lastFrame = 0, lastRender = 0, lastCheck = 0;
 const wave = new Uint8Array(SAMPLES).fill(128);
 const levels = { timeByteArray: wave, timeByteArrayL: wave, timeByteArrayR: wave };
 
@@ -193,7 +240,7 @@ const melt = (() => {
   /** How much of the image goes in this frame, 0 to 1. */
   function alpha(now, renderer) {
     const strength = Math.max(1, Math.min(100, cfg.imageStrength || 30)) / 100;
-    if (cfg.imageMode === 'beat') {
+    if (calm.imageMode() === 'beat') {
       // bass is 1 at the song's own average; hits run to 1.5–2 and past.
       const bass = renderer.audioLevels ? renderer.audioLevels.bass : 1;
       return Math.min(1, strength * Math.max(0, Math.min(1, (bass - 1.2) / 0.8)));
@@ -289,6 +336,215 @@ const melt = (() => {
   return { init, update, draw, overlay, resized, presetChanged };
 })();
 
+/**
+ * Calm mode: for winding down. Presets change at most every CYCLE_S seconds
+ * and, when the timer changes them, blend over at least BLEND_S; the presets'
+ * clock runs at TIME_RATE, so their swirls and pulses slow; the motion each
+ * frame (zoom, spin, warp, drift) is cut to MOTION of the preset's own; bass, mid and treble (1 at the song's own
+ * average, hits well above) are pulled REACT of the way back towards 1, so
+ * beats nudge rather than punch; the waveform the presets draw is flattened
+ * by the same share; images come in steadily, not on the beat; and the
+ * picture is dimmed (CSS, body.calm). Toggling it fades over 3 s.
+ */
+const calm = (() => {
+  const CYCLE_S = 90, BLEND_S = 10, TIME_RATE = 0.6, REACT = 0.6, MOTION = 0.45;
+
+  /**
+   * Damps the levels butterchurn works out each frame, before the preset
+   * reads them: its bass, mid and treb (and _att) are getters over `val`
+   * and `att`, which it works out afresh each frame from its own running
+   * averages, so damping them here doesn't feed back. Reaches into its
+   * renderer (tested against 2.6.7); without the fields it expects, only
+   * the other parts of calm apply.
+   */
+  function init(renderer) {
+    slowMotion(renderer);
+    const lv = renderer && renderer.audioLevels;
+    if (!lv || typeof lv.updateAudioLevels !== 'function' || !lv.val || !lv.att) return;
+    const update = lv.updateAudioLevels.bind(lv);
+    lv.updateAudioLevels = (...args) => {
+      update(...args);
+      if (!cfg.calm) return;
+      for (const a of [lv.val, lv.att]) for (let i = 0; i < a.length; i++) a[i] = 1 + (a[i] - 1) * (1 - REACT);
+    };
+  }
+
+  /**
+   * Milkdrop moves the picture by warping last frame through a mesh: each
+   * vertex's texture coordinate (renderer.warpUVs) is where it fetches from,
+   * so its distance from the vertex's own place is that frame's movement.
+   * Pulling them MOTION of the way back slows every zoom, spin and warp
+   * alike. The renderer runs the new preset (blend false), then while
+   * blending mixes the old one in by a weight per vertex (warpColor's
+   * alpha); the part already slowed is put back so nothing slows twice.
+   * Reaches into its renderer (tested against 2.6.7); without the fields it
+   * expects, motion runs at its own speed.
+   */
+  function slowMotion(r) {
+    if (!r || typeof r.runPixelEquations !== 'function') return;
+    const run = r.runPixelEquations.bind(r);
+    let idU = null, idV = null, kept = null;
+    r.runPixelEquations = (preset, frame, vertEqs, blending) => {
+      const uv = r.warpUVs;
+      if (!cfg.calm || !uv || !r.warpColor) return run(preset, frame, vertEqs, blending);
+      const w = r.mesh_width, h = r.mesh_height, n = (w + 1) * (h + 1);
+      if (uv.length !== n * 2) return run(preset, frame, vertEqs, blending);
+      if (!idU || idU.length !== n) {
+        // Where each vertex fetches from with no movement at all.
+        idU = new Float32Array(n);
+        idV = new Float32Array(n);
+        for (let y = 0, i = 0; y <= h; y++) for (let x = 0; x <= w; x++, i++) { idU[i] = x / w; idV[i] = 1 - y / h; }
+        kept = new Float32Array(n * 2);
+      }
+      if (blending) kept.set(uv);
+      run(preset, frame, vertEqs, blending);
+      const a = r.warpColor;
+      for (let i = 0; i < n; i++) {
+        let u = idU[i] + (uv[i * 2] - idU[i]) * MOTION, v = idV[i] + (uv[i * 2 + 1] - idV[i]) * MOTION;
+        if (blending) {
+          const q = a[i * 4 + 3] * (1 - MOTION);   // the new preset's share, slowed already
+          u += (kept[i * 2] - idU[i]) * q;
+          v += (kept[i * 2 + 1] - idV[i]) * q;
+        }
+        uv[i * 2] = u;
+        uv[i * 2 + 1] = v;
+      }
+    };
+  }
+
+  const on = () => !!cfg.calm;
+  return {
+    init,
+    on,
+    cycleSeconds: () => on() ? Math.max(cfg.cycleSeconds, CYCLE_S) : cfg.cycleSeconds,
+    /** For the timer's changes; the remote's keep their own blend (slowed with the clock). */
+    blend: s => on() ? Math.max(s, BLEND_S) : s,
+    /** The seconds to tell the presets have passed, for `ms` real ones. */
+    elapsed: ms => Math.max(1, Math.min(250, ms)) / 1000 * (on() ? TIME_RATE : 1),
+    wave(w) { if (on()) for (let i = 0; i < w.length; i++) w[i] = 128 + (w[i] - 128) * (1 - REACT); },
+    imageMode: () => on() ? 'steady' : cfg.imageMode,
+  };
+})();
+
+/**
+ * On-screen media controls (MediaNow, through `shield`): the track, its art
+ * and progress, and previous / play-pause / next. Never up for good: they
+ * show for SHOW_MS when the visualizer opens on something playing, the track
+ * changes or it's paused or resumed; Menu opens them for the remote
+ * (left/right, select) until OPEN_MS without a key, then they close and the
+ * arrows go back to the presets.
+ */
+const media = (() => {
+  const SHOW_MS = 6000, OPEN_MS = 8000;
+  const ACTIONS = ['prev', 'toggle', 'next'];
+  const PLAY = 'M8 5v14l11-7z', PAUSE = 'M6 5h4v14H6zm8 0h4v14h-4z';
+  const $ = id => document.getElementById(id);
+  const box = $('media'), buttons = [...document.querySelectorAll('#m-buttons div')];
+  let info = {}, seenAt = 0, open = false, focus = 1, hideAt = 0, art = null, lastKey = null, lastPlaying = null;
+  let lastBar = 0;
+
+  function time(ms) {
+    if (!(ms >= 0)) return '';
+    const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = String(t % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+  }
+
+  function show(ms) {
+    hideAt = Math.max(hideAt, performance.now() + ms);
+    box.classList.add('on');
+    document.body.classList.add('media-on');
+  }
+
+  function hide() {
+    hideAt = 0;
+    box.classList.remove('on', 'open');
+    document.body.classList.remove('media-on');
+    if (open) { open = false; shield.controlsClosed(); }
+  }
+
+  function render() {
+    const has = !!(info.title || info.artist);
+    $('m-title').textContent = has ? (info.title || info.artist)
+        : info.access === false ? 'Can\'t see what\'s playing' : 'Nothing playing';
+    $('m-sub').textContent = has ? [info.title ? info.artist : '', info.album, info.app].filter(Boolean).join(' · ')
+        : info.access === false ? 'The buttons still send media keys. ./build.sh install allows it.' : '';
+    $('m-toggle').setAttribute('d', info.playing ? PAUSE : PLAY);
+    $('m-hint').textContent = open ? '← → choose · Select press · Menu, Back, ↑ or ↓ close' : 'Menu for controls';
+    buttons.forEach((b, i) => b.classList.toggle('focus', i === focus));
+    box.classList.toggle('open', open);
+    if (info.art !== art) {
+      art = info.art;
+      const url = art ? shield.mediaArt() : '';
+      $('m-art').hidden = !url;
+      if (url) $('m-art').src = url;
+    }
+    bar(performance.now());
+  }
+
+  /** The progress, carried on between the once-a-second reads. */
+  function bar(now) {
+    const len = info.duration > 0 ? info.duration : -1;
+    let pos = info.position;
+    if (pos >= 0 && info.playing) pos += (now - seenAt) * (info.speed || 1);
+    if (len > 0) pos = Math.min(pos, len);
+    $('m-bar').style.visibility = len > 0 ? 'visible' : 'hidden';
+    $('m-pos').style.width = len > 0 ? (pos / len * 100).toFixed(2) + '%' : '0';
+    $('m-at').textContent = pos >= 0 && (info.title || info.artist) ? time(pos) : '';
+    $('m-len').textContent = time(len);
+  }
+
+  /** Every second: the latest, and a few seconds' showing if the track or play/pause changed. */
+  function poll() {
+    try { info = JSON.parse(shield.media()); } catch (e) { info = {}; }
+    seenAt = performance.now();
+    const key = info.key || '', playing = !!info.playing;
+    const changed = lastKey !== null && (key !== lastKey || playing !== lastPlaying);
+    const first = lastKey === null && key && playing;   // just opened on something playing
+    lastKey = key;
+    lastPlaying = playing;
+    if ((changed && key) || first) show(SHOW_MS);
+    render();
+  }
+
+  /** Each frame: the progress while up (4 times a second), and closing when it's time. */
+  function tick(now) {
+    if (!hideAt) return;
+    if (now >= hideAt) { hide(); return; }
+    if (now - lastBar >= 250) { lastBar = now; bar(now); }
+  }
+
+  function setOpen(on) {
+    if (!on) { hide(); return; }
+    open = true;
+    focus = 1;
+    hideAt = 0;
+    show(OPEN_MS);
+    render();
+  }
+
+  function move(by) {
+    if (!open) return;
+    focus = Math.max(0, Math.min(ACTIONS.length - 1, focus + by));
+    hideAt = performance.now() + OPEN_MS;
+    render();
+  }
+
+  function press() {
+    if (!open) return;
+    const a = ACTIONS[focus];
+    shield.mediaAction(a);
+    if (a === 'toggle') { info.playing = !info.playing; lastPlaying = info.playing; }
+    hideAt = performance.now() + OPEN_MS;
+    render();
+    setTimeout(poll, 500);
+  }
+
+  /** A key showed the label: a panel that came up by itself gives way, so the label (Held, liked…) shows. */
+  function yield_() { if (!open && hideAt) hide(); }
+
+  return { poll, tick, setOpen, move, press, yield: yield_ };
+})();
+
 function fail(text) {
   const e = document.getElementById('error');
   e.textContent = text;
@@ -297,20 +553,34 @@ function fail(text) {
 
 function liked() { return (cfg.liked || []).filter(n => presets[n]); }
 
-/** What the timer and the arrows choose from: the liked presets, or all. */
+function calmTagged() { return (cfg.calmPresets || []).filter(n => presets[n]); }
+
+/**
+ * What the timer and the arrows choose from: the liked presets, or all. In
+ * calm mode, only the presets tagged calm (the liked ones among them, when
+ * playing liked and there are some); with none tagged, as usual.
+ */
 function pool() {
   const l = cfg.playlist === 'liked' ? liked() : [];
-  return l.length ? l : names;
+  const base = l.length ? l : names;
+  if (!cfg.calm) return base;
+  const c = calmTagged();
+  if (!c.length) return base;
+  const both = c.filter(n => base.includes(n));
+  return both.length ? both : c;
 }
 
 function showLabel() {
-  const isLiked = liked().includes(current);
-  label.textContent = (isLiked ? '♥ ' : '') + current;
+  media.yield();
+  const isLiked = liked().includes(current), isCalm = calmTagged().includes(current);
+  label.textContent = (isLiked ? '♥ ' : '') + (isCalm ? '☾ ' : '') + current;
   const small = document.createElement('small');
   small.textContent = (held ? 'Held · Select to cycle again' : '← → change · Select to hold this one') +
-      (isLiked ? ' · ↑ unlike' : ' · ↑ like') +
+      (cfg.calm ? ' · Calm (hold ↓ to end)' : '') + ' · Menu: media controls' +
+      (isLiked ? ' · ↑ unlike' : ' · ↑ like') + (isCalm ? ' · Hold ↑: not calm' : ' · Hold ↑: calm') +
       ((cfg.images || []).length ? (cfg.imagesOn === false ? ' · Hold Select: images on' : ' · Hold Select: images off') : '') +
-      (cfg.playlist === 'liked' && liked().length ? ' · Playing liked' : '');
+      (cfg.playlist === 'liked' && liked().length ? ' · Playing liked' : '') +
+      (cfg.calm && calmTagged().length ? ' · Playing calm' : '');
   label.appendChild(small);
   label.classList.add('on');
   clearTimeout(labelTimer);
@@ -321,7 +591,7 @@ function load(name, blend) {
   current = name;
   viz.loadPreset(presets[name], blend);
   melt.presetChanged(performance.now());
-  nextAt = performance.now() + cfg.cycleSeconds * 1000;
+  nextAt = performance.now() + calm.cycleSeconds() * 1000;
   shield.showing(name);
 }
 
@@ -363,11 +633,14 @@ function applySettings(next) {
   } else if (cfg.preset && cfg.preset !== old.preset && presets[cfg.preset]) {
     load(cfg.preset, cfg.userBlend);
     showLabel();
-  } else if (cfg.playlist !== old.playlist && !pool().includes(current)) {
+  } else if ((cfg.playlist !== old.playlist || !!cfg.calm !== !!old.calm) && !pool().includes(current)) {
     load(random(), cfg.userBlend);
     showLabel();
   }
-  if (old.cycleSeconds !== cfg.cycleSeconds) nextAt = performance.now() + cfg.cycleSeconds * 1000;
+  if (old.cycleSeconds !== cfg.cycleSeconds || !!old.calm !== !!cfg.calm) {
+    nextAt = performance.now() + calm.cycleSeconds() * 1000;
+  }
+  document.body.classList.toggle('calm', calm.on());
 }
 
 // Called by VisualizerOverlay for the remote's keys. Not `viz`: the
@@ -382,10 +655,30 @@ window.remote = {
     cfg.liked = now ? liked().concat(current) : liked().filter(n => n !== current);
     showLabel();
   },
+  /** Up held: tags this preset calm, or not; in calm mode, one no longer calm gives way to one that is. */
+  tagCalm() {
+    const now = !calmTagged().includes(current);
+    shield.calmPreset(current, now);
+    cfg.calmPresets = now ? calmTagged().concat(current) : calmTagged().filter(n => n !== current);
+    if (!now && cfg.calm && !held && !pool().includes(current)) load(random(), cfg.userBlend);
+    showLabel();
+    label.querySelector('small').textContent = now ? 'Tagged calm: calm mode plays it' : 'No longer calm' +
+        (cfg.calm && calmTagged().length ? ': on to a calm one' : '');
+  },
   hold() {
     held = !held;
-    nextAt = performance.now() + cfg.cycleSeconds * 1000;
+    nextAt = performance.now() + calm.cycleSeconds() * 1000;
     showLabel();
+  },
+  /** Menu: the media controls open for the remote, or closed. */
+  controls(on) { media.setOpen(on); },
+  controlsMove(by) { media.move(by); },
+  controlsPress() { media.press(); },
+  /** Down held: the overlay has already saved it; this applies and shows it straight away. */
+  calm(on) {
+    applySettings(Object.assign({}, cfg, { calm: on }));
+    showLabel();
+    label.querySelector('small').textContent = (on ? 'Calm mode on' : 'Calm mode off') + ' · Hold down to turn it ' + (on ? 'off' : 'on');
   },
   /** Select held: the overlay has already saved it; this shows it straight away. */
   images(on) {
@@ -404,7 +697,9 @@ function frame(now) {
     applySettings(JSON.parse(shield.settings()));
     melt.update(cfg);
     note.textContent = shield.note();
+    media.poll();
   }
+  media.tick(now);
   // A small allowance, so a 60 Hz display still draws every frame at 60.
   if (cfg.frameLimit && now - lastFrame < 1000 / cfg.frameLimit - 2) return;
   lastFrame = now;
@@ -415,11 +710,14 @@ function frame(now) {
   } else {
     wave.fill(128);
   }
+  calm.wave(wave);
   if (cfg.cycle && !held && now >= nextAt) {
-    load(cfg.randomize ? random() : step(1), cfg.autoBlend);
+    load(cfg.randomize ? random() : step(1), calm.blend(cfg.autoBlend));
   }
   melt.draw(now);
-  viz.render({ audioLevels: levels });
+  const elapsedTime = calm.elapsed(lastRender ? now - lastRender : 1000 / 30);
+  lastRender = now;
+  viz.render({ audioLevels: levels, elapsedTime });
   melt.overlay();
 }
 
@@ -433,6 +731,8 @@ try {
       Object.assign({ width: s.w, height: s.h, pixelRatio: 1, textureRatio: 1 }, s.mesh));
   const pack = window.butterchurnPresets.default || window.butterchurnPresets;
   presets = pack.getPresets();
+  calm.init(viz.renderer);
+  document.body.classList.toggle('calm', calm.on());
   names = Object.keys(presets);
   try {
     melt.init(viz.renderer.gl);

@@ -57,7 +57,7 @@ import java.util.concurrent.Executors;
  * {@link Store#visualizerStatus()}.
  *
  * Left/right step through the presets, up likes or unlikes the one showing
- * ({@link Store#visualizerLiked()}), down jumps to a random one, select
+ * ({@link Store#visualizerLiked()}; held: tag it calm, {@link Store#visualizerCalmPresets()}), down jumps to a random one (held: calm mode on or off), select
  * holds the current one, holding select turns the source images
  * ({@link VisualizerImage}) on or off, Back closes. The config page can open it on a
  * playlist or a preset of its own ({@link #show(String, String)}). The window takes focus, so the app
@@ -107,6 +107,10 @@ final class VisualizerOverlay {
     private boolean selectLong;
     /** How long select is held to toggle the images rather than hold the preset. */
     private static final long SELECT_LONG_MS = 600;
+    private boolean upLong;             // up held this press: calm tag toggled, no like
+    private boolean downLong;           // down held this press: calm mode toggled, no random preset
+    /** The media controls are open for the remote (Menu): the arrows and select work them. */
+    private volatile boolean controls;
 
     private final Runnable follow = new Runnable() {
         @Override public void run() {
@@ -148,6 +152,7 @@ final class VisualizerOverlay {
         if (root != null) return;
         showing = true;
         ModeLightsController.get(context).set(ModeLights.VISUALIZER, true);
+        AmbilightService.visualizer(true);
         note = "";
         follow.run();
 
@@ -184,12 +189,14 @@ final class VisualizerOverlay {
     void hide() {
         if (root == null) return;
         ModeLightsController.get(context).set(ModeLights.VISUALIZER, false);
+        AmbilightService.visualizer(false);
         try { context.unregisterReceiver(screenOff); } catch (IllegalArgumentException ignored) { }
         wm.removeView(root);
         web.destroy();
         web = null;
         root = null;
         showing = false;
+        controls = false;
         playPlaylist = playPreset = "";
         store.setVisualizerShowing("");
         handler.removeCallbacks(follow);
@@ -206,6 +213,14 @@ final class VisualizerOverlay {
     }
 
     private boolean onKey(KeyEvent e) {
+        if (e.getKeyCode() == KeyEvent.KEYCODE_MENU) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                controls = !controls;
+                web.evaluateJavascript("remote.controls(" + controls + ")", null);
+            }
+            return true;
+        }
+        if (controls) return onControlsKey(e);
         String call;
         switch (e.getKeyCode()) {
             case KeyEvent.KEYCODE_BACK:
@@ -213,8 +228,33 @@ final class VisualizerOverlay {
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT: call = "remote.prev()"; break;
             case KeyEvent.KEYCODE_DPAD_RIGHT: call = "remote.next()"; break;
-            case KeyEvent.KEYCODE_DPAD_UP: call = "remote.like()"; break;
-            case KeyEvent.KEYCODE_DPAD_DOWN: call = "remote.random()"; break;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                // A short press likes the preset, a hold tags it calm (or untags it).
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (e.getRepeatCount() == 0) {
+                        upLong = false;
+                    } else if (!upLong && e.getEventTime() - e.getDownTime() >= SELECT_LONG_MS) {
+                        upLong = true;
+                        web.evaluateJavascript("remote.tagCalm()", null);
+                    }
+                } else if (e.getAction() == KeyEvent.ACTION_UP && !upLong && !e.isCanceled()) {
+                    web.evaluateJavascript("remote.like()", null);
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                // Like select: a short press is a random preset, a hold calm mode on or off.
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (e.getRepeatCount() == 0) {
+                        downLong = false;
+                    } else if (!downLong && e.getEventTime() - e.getDownTime() >= SELECT_LONG_MS) {
+                        downLong = true;
+                        boolean on = store.toggleCalm(true);
+                        web.evaluateJavascript("remote.calm(" + on + ")", null);
+                    }
+                } else if (e.getAction() == KeyEvent.ACTION_UP && !downLong && !e.isCanceled()) {
+                    web.evaluateJavascript("remote.random()", null);
+                }
+                return true;
             case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
                 // Acted on at release, so a hold can mean something else.
                 if (e.getAction() == KeyEvent.ACTION_DOWN) {
@@ -235,6 +275,34 @@ final class VisualizerOverlay {
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
             web.evaluateJavascript(call, null);
         }
+        return true;
+    }
+
+    /**
+     * With the media controls open: left and right move between previous,
+     * play/pause and next, select presses one, Back, up or down close them.
+     * Volume and media keys go on as ever. The page closes them itself after
+     * a few idle seconds and says so ({@link Bridge#controlsClosed}).
+     */
+    private boolean onControlsKey(KeyEvent e) {
+        String call;
+        switch (e.getKeyCode()) {
+            case KeyEvent.KEYCODE_DPAD_LEFT: call = "remote.controlsMove(-1)"; break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: call = "remote.controlsMove(1)"; break;
+            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER:
+                if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) {
+                    web.evaluateJavascript("remote.controlsPress()", null);
+                }
+                return true;
+            case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (e.getAction() == KeyEvent.ACTION_UP) {
+                    controls = false;
+                    web.evaluateJavascript("remote.controls(false)", null);
+                }
+                return true;
+            default: return false;
+        }
+        if (e.getAction() == KeyEvent.ACTION_DOWN) web.evaluateJavascript(call, null);
         return true;
     }
 
@@ -422,6 +490,7 @@ final class VisualizerOverlay {
             JSONObject s = store.visualizer();
             try {
                 s.put("liked", store.visualizerLiked());
+                s.put("calmPresets", store.visualizerCalmPresets());
                 if (!playPlaylist.isEmpty()) s.put("playlist", playPlaylist);
                 s.put("play", playPreset).put("playSeq", playSeq);
                 s.put("images", new JSONArray(VisualizerImage.ids(context)));
@@ -437,6 +506,26 @@ final class VisualizerOverlay {
         /** Likes or unlikes a preset, from the remote's up. */
         @JavascriptInterface
         public void like(String preset, boolean liked) { store.setVisualizerLiked(preset, liked); }
+
+        /** What's playing, for the media controls: {@link MediaNow#info}. Read every second. */
+        @JavascriptInterface
+        public String media() { return MediaNow.info(context).toString(); }
+
+        /** The track's art as a data: URL; read when {@code media()}'s art changes. */
+        @JavascriptInterface
+        public String mediaArt() { return MediaNow.art(); }
+
+        /** "prev", "toggle" or "next", from the on-screen controls. */
+        @JavascriptInterface
+        public void mediaAction(String what) { MediaNow.action(context, what); }
+
+        /** The page closed the controls after idling: the arrows go back to the presets. */
+        @JavascriptInterface
+        public void controlsClosed() { controls = false; }
+
+        /** Tags a preset calm or not, from the remote's up held. */
+        @JavascriptInterface
+        public void calmPreset(String preset, boolean calm) { store.setVisualizerCalmPreset(preset, calm); }
 
         /** The preset now on screen, for the config page. */
         @JavascriptInterface

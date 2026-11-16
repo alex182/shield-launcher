@@ -160,9 +160,10 @@ The config page's **Show on the TV now** opens it too.
 | Key | Does |
 | --- | --- |
 | Left / right | previous / next preset |
-| Up | like this preset, or unlike it |
-| Down | a random preset |
+| Up | like this preset, or unlike it; held (0.6 s), tag it calm or untag it |
+| Down | a random preset; held (0.6 s), calm mode on or off |
 | Select | hold this preset (stop cycling); again to cycle |
+| Menu (≡) | media controls, for the remote; again to close |
 | Play/pause, volume, media keys | still go to the player |
 
 - **Settings** (config page, Music visualizer) copy butterchurnviz.com's,
@@ -171,6 +172,43 @@ The config page's **Show on the TV now** opens it too.
   (30), canvas size and mesh size (48 × 36). Canvas size is the exception:
   0.67× native (720p) by default, and no 2×/4×, for the Tegra's sake. They
   apply live: the TV page re-reads them every second.
+- **Calm mode** (config page, *Calm mode*, `calm` in the settings): for
+  winding down. Timed preset changes come at most every 90 s and blend over
+  at least 10 s; the presets' clock runs at 0.6× (butterchurn's
+  `elapsedTime`), so swirls and pulses slow; the movement each frame
+  (zoom, spin, warp, drift) is cut to 45% of the preset's own, by pulling
+  butterchurn's warp mesh (`warpUVs`, after its `runPixelEquations`)
+  towards standing still, allowing for the blend between presets; bass, mid and treble are pulled
+  60% of the way back to their average, so beats nudge rather than punch
+  (this wraps butterchurn's `audioLevels.updateAudioLevels` and damps its
+  `val`/`att`: re-check it after `tools/update-butterchurn.sh`); the drawn
+  waveform is flattened as much; images go in *Steady* even when set to *On
+  the beat*; and the canvas is dimmed to 70% opacity, fading over 3 s as it
+  turns on or off. The remote's keys keep their own blend time. Holding
+  down switches it, for the ambilight too (see there).
+  **Calm presets**: some presets strobe or flash whatever the audio does,
+  so presets can be tagged calm, by holding up on the TV (☾ in the label)
+  or on the config page (`POST /api/visualizer/calm` with `preset`,
+  `calm`), and calm mode then cycles through only those (the liked ones
+  among them when playing liked, if any). Untagging the preset on screen in
+  calm mode moves on to a calm one. With none tagged, calm mode plays the
+  usual presets. Kept apart from the settings, like the likes
+  (`visualizer_calm_presets`), and in the backup's visualizer group.
+- **Media controls** (`MediaNow`): the track (title, artist, album, app),
+  its art and progress, and previous / play-pause / next, in a panel at the
+  bottom. Never up for good: it shows for 6 s when the visualizer opens on
+  something playing, when the track changes, and on pause or resume. Menu
+  (≡) opens it for the remote: left and right choose a button, select
+  presses it, and Menu, Back, up or down close it, as does 8 s without a
+  key; then the arrows work the presets again. Popped up by itself the
+  panel shows no buttons (Select there holds the preset, not play/pause),
+  and gives way as soon as a key brings up the label, so "Held" is never
+  hidden behind it. The buttons go to the
+  playing app's media session. Reading the sessions needs the app allowed
+  as a notification listener (`MediaListener`, which reads no
+  notifications); `./build.sh install` does it (`cmd notification
+  allow_listener`). Without it the panel says it can't see what's playing,
+  and the buttons send media keys instead.
 - **Liked presets**: up on the remote, or Like on the config page next to
   the preset on screen, saves a like straight away (`visualizer_liked`, kept
   apart from the settings so the page's Save can't undo a like made on the
@@ -291,6 +329,32 @@ they fade to the whole picture's average.
   exponential fade, 150 ms) are settings. Gamma is 1 (none) by default, but
   WS2812 strips are linear and WLED leaves realtime data uncorrected, so
   pictures look pale; 2.2 matches the screen.
+- **Outside the visualizer** (`segment`): the whole room lights up only
+  while the music visualizer shows (`VisualizerOverlay` tells
+  `AmbilightService.visualizer()`). The rest of the time only the LEDs
+  picked on the config page (one strip, from LED to LED, counted from 1 at
+  its input end) follow the picture. The other strips on that strip's WLED
+  get black, since WLED in realtime mode would otherwise hold their last
+  colours; strips on other WLEDs fade out and are then no longer sent to, so
+  after the 2 s timeout they go back to what they were doing. The change
+  fades both ways at the smoothing rate. *The whole room, always* (the
+  default, `strip: -1`) turns this off. Tests (test pattern, finding the
+  ends) always light everything.
+- **Calm mode** (`calm`): for winding down. Brightness at 60% of the
+  setting, saturation at most 85%, at least a 2.5 s fade, patches at least
+  30% deep with each LED pulled halfway further towards the whole picture's
+  average, and patch averages rather than the most vivid colour, with the
+  automatic edge off (`Ambilight.Tuning.calm()`). The stored settings are
+  left alone, so turning it off brings them straight back.
+  **Holding down on the remote** (1 s) switches calm mode for the ambilight
+  and the visualizer together (`Store.toggleCalm`), with a toast: in the
+  visualizer always, over an app only while the ambilight is on and
+  something is playing (`AudioManager.isMusicActive()`), so holding down to
+  scroll through a menu doesn't switch it. Over an app the press still
+  reaches the app (an accessibility service can't send an arrow key on
+  later, so it's only watched, not held back). It writes the saved
+  settings, so reload an open config page before saving it, or its Save
+  puts back the old setting.
 - **Protected video is black.** Netflix, Disney+, Prime and most paid
   streaming draw on secure surfaces that every screen capture sees as black,
   so the strips go dark for them; the page says so when the picture has
@@ -332,6 +396,17 @@ that action's entities, so more can be added. The SHIELD proxies
 Assistant directly and the token stays on the device. It is open to anyone on the LAN by choice; the
 token alone is write-only and never sent back. The server runs inside the
 quick actions service (`WebConfigServer`), so that service must be enabled.
+
+Android switches that service off for good after a force-stop (TV Settings →
+Apps → Force stop) or a crash, which takes the page and the quick menu with
+it. `ServiceGuard` puts it back: the launcher process returns on its own as
+HOME, and within about 20–80 s re-lists the service (out of
+`enabled_accessibility_services` and back in, which is what clears Android's
+"crashed" mark; other apps' services are kept). It needs
+`WRITE_SECURE_SETTINGS`, granted by `./build.sh install`; `adb logcat -s
+ServiceGuard` shows each repair. Uncaught exceptions are appended to a crash
+log, readable at `http://<shield>:8080/api/crashlog`, since logcat rolls
+over within hours.
 
 `./build.sh install` does the device setup: it appends the service to
 `enabled_accessibility_services` (replacing the list would switch off any
