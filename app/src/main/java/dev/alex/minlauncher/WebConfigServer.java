@@ -49,6 +49,11 @@ final class WebConfigServer implements Runnable {
     private volatile Screenshots screenshots;
     void setScreenshots(Screenshots s) { screenshots = s; }
 
+    /** The visualizer overlay, for the page's on/off switch; null until the service sets it. */
+    interface Visualizer { boolean showing(); void hide(); }
+    private volatile Visualizer visualizer;
+    void setVisualizer(Visualizer v) { visualizer = v; }
+
     private ServerSocket server;
     private Thread thread;
 
@@ -192,6 +197,17 @@ final class WebConfigServer implements Runnable {
                     try (InputStream f = new java.io.FileInputStream(log)) { crashes = HomeAssistant.readAll(f); }
                 }
                 send(client, 200, "text/plain; charset=utf-8", crashes);
+            } else if (method.equals("GET") && path.equals("/api/controls")) {
+                // The header's switches: visualizer, ambilight and calm mode, in one poll.
+                Visualizer v = visualizer;
+                send(client, 200, "application/json", new JSONObject()
+                        .put("visualizer", v != null && v.showing())
+                        .put("ambilight", AmbilightService.status().getString("state"))
+                        .put("calm", store.calmState()).toString());
+            } else if (method.equals("POST") && path.equals("/api/visualizer/hide")) {
+                Visualizer v = visualizer;
+                if (v != null) v.hide();
+                sendResult(client, () -> "Closed on the TV");
             } else if (method.equals("GET") && path.equals("/api/calm")) {
                 send(client, 200, "application/json", new JSONObject().put("calm", store.calmState()).toString());
             } else if (method.equals("POST") && path.equals("/api/calm")) {

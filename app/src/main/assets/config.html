@@ -21,7 +21,7 @@
   header {
     position: sticky; top: 0; z-index: 1; background: rgba(0,0,0,.92);
     border-bottom: 1px solid var(--line);
-    display: flex; align-items: center; gap: 16px; padding: 14px 24px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 24px;
   }
   header h1 { margin: 0; font-size: 20px; font-weight: 300; }
   header .device { color: var(--dim); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
@@ -180,6 +180,8 @@
     <div class="device" id="device"></div>
   </div>
   <div class="spacer"></div>
+  <button id="viz-master" title="Show or close the music visualizer on the TV">♫ Visualizer</button>
+  <button id="amb-master" title="Turn the ambilight on or off">☀ Ambilight</button>
   <button id="calm-master" title="Calm mode for the visualizer and the ambilight together; applies at once">☾ Calm</button>
   <button id="shot-take" title="Take a screenshot of what the TV shows">Screenshot</button>
   <span id="status">Loading…</span>
@@ -3043,7 +3045,7 @@ async function pollResources() {
 function resourcesTick() {
   clearTimeout(res.timer);
   if (document.visibilityState !== 'visible') return;
-  Promise.all([pollResources(), pollCalm()]).finally(() => { res.timer = setTimeout(resourcesTick, RES_MS); });
+  Promise.all([pollResources(), pollControls()]).finally(() => { res.timer = setTimeout(resourcesTick, RES_MS); });
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { res.prev = null; resourcesTick(); }
@@ -3089,8 +3091,50 @@ $('calm-master').onclick = async () => {
   }
 };
 
-async function pollCalm() {
-  try { showCalm((await (await fetch('/api/calm')).json()).calm); } catch (e) { }
+// ------------------------------------------------- visualizer and ambilight
+
+/** The header's on/off switches; "on" shows as pressed. Follows changes made on the TV. */
+function showSwitch(id, label, on, detail) {
+  const b = $(id);
+  if (b.disabled) return;   // a press is on its way; its answer wins
+  b.classList.toggle('on', on);
+  b.textContent = label + (on ? ' on' : '') + (detail ? ' (' + detail + ')' : '');
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+let controls = {};
+
+function showControls(c) {
+  controls = c;
+  showSwitch('viz-master', '♫ Visualizer', c.visualizer);
+  // "paused" (screen off or nothing to light) and "test" still count as on: a press turns them off.
+  showSwitch('amb-master', '☀ Ambilight', c.ambilight !== 'off',
+    c.ambilight === 'paused' ? 'paused' : c.ambilight === 'test' ? 'testing' : '');
+  showCalm(c.calm);
+}
+
+async function pressSwitch(id, request) {
+  const b = $(id);
+  b.disabled = true;
+  try {
+    await request();
+    // The TV takes a moment (the ambilight asks for the screen capture first).
+    await new Promise(r => setTimeout(r, 1500));
+  } catch (e) {
+    b.title = 'Could not reach the TV: ' + e.message;
+  } finally {
+    b.disabled = false;
+    pollControls();
+  }
+}
+
+$('viz-master').onclick = () => pressSwitch('viz-master', () =>
+  controls.visualizer ? post('/api/visualizer/hide', {}) : post('/api/visualizer/show', {}));
+$('amb-master').onclick = () => pressSwitch('amb-master', () =>
+  controls.ambilight && controls.ambilight !== 'off' ? post('/api/ambilight/stop', {}) : post('/api/ambilight/start', {}));
+
+async function pollControls() {
+  try { showControls(await (await fetch('/api/controls')).json()); } catch (e) { }
 }
 </script>
 </body>
