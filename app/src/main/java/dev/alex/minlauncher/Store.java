@@ -87,6 +87,9 @@ final class Store {
     static final String KEY_BG_SEASON = "bg_season";
     static final String KEY_BG_HOLIDAYS = "bg_holidays";       // Backgrounds.DEFAULT_HOLIDAYS format
     static final String KEY_BG_OVERRIDE = "bg_override";       // JSON {focal, season, time, condition, holiday}
+    static final String KEY_BG_NFS = "bg_nfs";                 // "host:/path" of the images; "" = the APK's own
+    static final String KEY_BG_NFS_UID = "bg_nfs_uid";         // AUTH_SYS identity sent to the NFS server
+    static final String KEY_BG_NFS_GID = "bg_nfs_gid";
     // Readability and layout, in percent.
     static final String KEY_SCRIM_DAY = "scrim_day";           // gradient opacity at the left edge
     static final String KEY_SCRIM_NIGHT = "scrim_night";
@@ -97,6 +100,7 @@ final class Store {
     static final String KEY_BG_LAST = "bg_last";               // last shown path, put up first on start
     static final String KEY_BG_FOCAL_DAY = "bg_focal_day";     // "YYYY-MM-DD focal": today's pick, held all day
 
+    static final String DEFAULT_NFS = "10.10.4.2:/lake/media/shield-launcher/backgrounds";
     static final String DEFAULT_WEATHER = "weather.lake_of_the_forest";   // the Tempest station
     static final String DEFAULT_SUN = "sun.sun";
     /** NWS Kansas City/Pleasant Hill radar, the closest to Lake of the Forest; an animated loop. */
@@ -538,6 +542,15 @@ final class Store {
     String bgSun() { return prefs.getString(KEY_BG_SUN, DEFAULT_SUN); }
     String bgSeason() { return prefs.getString(KEY_BG_SEASON, DEFAULT_SEASON); }
     String bgHolidays() { return prefs.getString(KEY_BG_HOLIDAYS, Backgrounds.DEFAULT_HOLIDAYS); }
+
+    String bgNfs() { return prefs.getString(KEY_BG_NFS, DEFAULT_NFS); }
+    int bgNfsUid() { return prefs.getInt(KEY_BG_NFS_UID, Nfs.Auth.NOBODY); }
+    int bgNfsGid() { return prefs.getInt(KEY_BG_NFS_GID, Nfs.Auth.NOBODY); }
+
+    /** The images' NFS share and the identity sent to it; uid and gid must be 0 or more. */
+    void setBgNfs(String spec, int uid, int gid) {
+        prefs.edit().putString(KEY_BG_NFS, spec).putInt(KEY_BG_NFS_UID, uid).putInt(KEY_BG_NFS_GID, gid).apply();
+    }
 
     String bgOverrideJson() { return prefs.getString(KEY_BG_OVERRIDE, "{}"); }
 

@@ -611,9 +611,29 @@
 
   <section>
     <h2>Background</h2>
-    <p class="hint">One of the images bundled with the launcher, chosen from Home Assistant's weather, sun and season
+    <p class="hint">One of the images on the NFS share below, chosen from Home Assistant's weather, sun and season
       and the date. Checked every 5 minutes while the home screen is showing.</p>
     <div class="now" id="bg-now">Nothing yet.</div>
+
+    <h3 class="sub">Images</h3>
+    <p class="hint" style="margin:4px 0 0">The NFS directory holding <code>manifest.json</code> and the images, as
+      <code>host:/path</code>; recent images are kept on the TV for when it is unreachable. Blank uses images built into
+      the APK, if any. The user and group ids are what the TV tells the server it is: use the read-only user's
+      (see README). The export needs <code>insecure</code>, since the TV can't use a port below 1024.</p>
+    <div class="grid3">
+      <div>
+        <label for="bg-nfs">NFS share</label>
+        <input id="bg-nfs" placeholder="10.10.4.2:/lake/media/shield-launcher/backgrounds" spellcheck="false">
+      </div>
+      <div>
+        <label for="bg-nfs-uid">User id</label>
+        <input type="number" id="bg-nfs-uid" min="0" step="1">
+      </div>
+      <div>
+        <label for="bg-nfs-gid">Group id</label>
+        <input type="number" id="bg-nfs-gid" min="0" step="1">
+      </div>
+    </div>
 
     <h3 class="sub">Entities</h3>
     <div class="grid3">
@@ -1072,6 +1092,9 @@ function loadBackground(bg) {
   $('bg-sun').value = bg.sun;
   $('bg-season').value = bg.season;
   $('bg-holidays').value = bg.holidays;
+  $('bg-nfs').value = bg.nfs;
+  $('bg-nfs-uid').value = bg.nfsUid;
+  $('bg-nfs-gid').value = bg.nfsGid;
   $('bg-scrim-day').value = bg.scrimDay;
   $('bg-scrim-night').value = bg.scrimNight;
   $('bg-scrim-end').value = bg.scrimEnd;
@@ -1103,12 +1126,19 @@ function holidayNames() {
   return $('bg-holidays').value.split('\n').map(l => (l.match(/^\s*([a-z0-9_]+)\s*:/) || [])[1]).filter(Boolean);
 }
 
+/** A blank id field means nobody (65534), never 0 (root). */
+function idOrNobody(id) {
+  const v = $(id).value.trim();
+  return v === '' ? 65534 : +v;
+}
+
 function backgroundFields() {
   const override = {};
   for (const k of OVERRIDES) if ($('ov-' + k).value) override[k] = $('ov-' + k).value;
   return {
     weather: $('bg-weather').value.trim(), sun: $('bg-sun').value.trim(), season: $('bg-season').value.trim(),
     holidays: $('bg-holidays').value, override,
+    nfs: $('bg-nfs').value.trim(), nfsUid: idOrNobody('bg-nfs-uid'), nfsGid: idOrNobody('bg-nfs-gid'),
     scrimDay: +$('bg-scrim-day').value, scrimNight: +$('bg-scrim-night').value,
     scrimEnd: +$('bg-scrim-end').value, contentWidth: +$('bg-content-width').value,
   };

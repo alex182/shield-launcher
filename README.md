@@ -25,10 +25,11 @@ In VS Code, "Reopen in Container" uses the same image via `.devcontainer/`.
 
 | Path | What |
 | --- | --- |
-| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`, `VisualizerOverlay` + `VisualizerImage`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row); ambilight: `Ambilight` (pure geometry, sampling and packets), `AmbilightConfig` (settings), `AmbilightService` (capture and streaming), `AmbilightActivity` (asks for the capture) |
+| `app/src/main/java/dev/alex/minlauncher/` | `MainActivity` (home), `QuickMenuService` (overlay + web server host), `LightPanel` + `Lights` (long-press light controls), `WebConfigServer`, `Store`, `Apps`, `HomeAssistant`, `Icons`, `CameraOverlay`, `RadarOverlay`, `VisualizerOverlay` + `VisualizerImage`; backgrounds: `Backgrounds` (pure picking logic), `BackgroundController`, `BackgroundFiles` (NFS share and on-device cache), `Nfs` (NFSv3 client), `Scrim`, `BackgroundDream` (screensaver); `Agenda` (pure) + `AgendaController` (today's events line) + `EventReminders` (pop-up before events); `Tone` (alert and chime playback); `TileFlow` (wrapping banner row); ambilight: `Ambilight` (pure geometry, sampling and packets), `AmbilightConfig` (settings), `AmbilightService` (capture and streaming), `AmbilightActivity` (asks for the capture) |
 | `app/src/test/` | JVM unit tests (`Backgrounds`, `Agenda`, `Alerts`, `Lights`, `TileFlow` wrapping, `Ambilight`); JUnit is test-only |
 | `app/src/main/assets/` | `config.html` (web page), `mdi/` (icon font), `visualizer/` (butterchurn page and presets) |
 | `app/src/main/res/` | theme, colours, focus selector, layout |
+| `tools/publish-backgrounds.sh` | copy `output/backgrounds/` to the NFS share |
 | `tools/update-mdi.sh` | refresh the bundled icon font |
 | `tools/update-butterchurn.sh` | refresh the bundled visualizer library and presets |
 | `.devcontainer/` | JDK 17 + Android SDK 34 + Gradle 8.5 image |
@@ -435,12 +436,74 @@ restore**.
 
 The home screen shows one of the Flint Hills images, chosen from Home
 Assistant's state. They're generated locally with ComfyUI (see
-[scripts/backgrounds/README.md](scripts/backgrounds/README.md)) and **ship in
-the APK**. The finished set in `output/backgrounds/` (WebPs and
-`manifest.json`) is committed, so a fresh clone builds with them. The build
-copies it into `assets/backgrounds/`. After regenerating, commit the changed
-images; new images or focal elements reach the TVs with the next
-`./build.sh install`. The full set makes the APK about 375 MB.
+[scripts/backgrounds/README.md](scripts/backgrounds/README.md)); the finished
+set in `output/backgrounds/` (WebPs and `manifest.json`) is committed. The
+launcher reads them **from an NFS share**,
+`10.10.4.2:/lake/media/shield-launcher/backgrounds` by default (config page →
+Background → Images), so the APK carries none. After regenerating, publish
+them; the TVs pick up the new manifest at their next check, with no reinstall:
+
+```bash
+tools/publish-backgrounds.sh   # rsync to ~/nas_lake/shield-launcher/backgrounds
+```
+
+Each TV keeps the 16 images it showed most recently (and the manifest) in its
+own storage, so it starts with the last pick and keeps working while the NAS is
+down. `Nfs` is a small built-in NFSv3 client (TCP, AUTH_SYS); there's no
+Android NFS mount without root. `BUNDLE_BACKGROUNDS=1 ./build.sh` builds the
+images into the APK instead (about 1.1 GB), used when the share setting is
+blank.
+
+### Background images on NFS
+
+NFS without Kerberos has no passwords: the client just states a uid and gid
+(AUTH_SYS). So the TVs' read-only access is enforced on the NAS. It gets its
+own export: read-only, limited to the two SHIELDs, and with every request
+squashed to a dedicated user that owns nothing. The launcher sends uid/gid
+65534 (nobody) unless set otherwise, never root.
+
+On the NAS (10.10.4.2):
+
+1. Check that `/etc/exports` is in charge, not ZFS:
+   `sudo zfs get sharenfs lake/media` should say `off`. (If it doesn't, put
+   the options from step 4 in a `sharenfs` on a separate
+   `lake/media/shield-launcher` dataset instead.)
+2. A system user with no login, no home and no files:
+   ```bash
+   sudo groupadd --system shieldbg
+   sudo useradd --system --gid shieldbg --no-create-home --home-dir /nonexistent \
+       --shell /usr/sbin/nologin shieldbg
+   sudo passwd -l shieldbg
+   id shieldbg            # note the uid and gid, e.g. uid=998 gid=998
+   ```
+3. The directory, owned by the user who publishes (files are world-readable,
+   which `tools/publish-backgrounds.sh` sets):
+   ```bash
+   sudo mkdir -p /lake/media/shield-launcher/backgrounds
+   sudo chown -R alex: /lake/media/shield-launcher
+   sudo chmod 755 /lake/media/shield-launcher /lake/media/shield-launcher/backgrounds
+   ```
+4. Its own export. Add one line to `/etc/exports`, with the uid/gid from
+   step 2:
+   ```
+   /lake/media/shield-launcher/backgrounds 192.168.1.209(ro,insecure,all_squash,anonuid=998,anongid=998,no_subtree_check) 192.168.1.197(ro,insecure,all_squash,anonuid=998,anongid=998,no_subtree_check)
+   ```
+   - `ro`: nothing can be written through it, whatever uid a client claims.
+   - `all_squash,anonuid,anongid`: every request runs as `shieldbg`, so a
+     client claiming root (or alex) gets nothing extra.
+   - Two hosts only: everyone else can't mount it at all.
+   - `insecure`: the TVs can't use a source port below 1024 (only root
+     can), and Linux exports refuse higher ports by default. Only this export
+     gets it; `/lake/media` stays `secure`, so the TVs can't mount that.
+5. Apply and check: `sudo exportfs -ra && sudo exportfs -v | grep -A1 shield-launcher`.
+6. If a firewall sits between 192.168.1.x and 10.10.4.x, allow TCP 111
+   (portmapper), 2049 (nfsd) and mountd's port; mountd's moves on every
+   restart unless pinned in `/etc/nfs.conf` (`[mountd]` `port=20048`).
+
+Then, on the config page, set the Images user and group ids to `shieldbg`'s
+(with `all_squash` the server ignores them, but the TV then claims nothing
+more than it gets). The Background status line shows any NFS error, e.g.
+"access denied" for a missing `insecure` or a TV not in the host list.
 
 | Input | Default entity | Gives |
 | --- | --- | --- |
@@ -454,8 +517,8 @@ images; new images or focal elements reach the TVs with the next
   November, plus Friday) and so is Easter; `12-31..01-01` wraps over New Year.
   If there's no image for the holiday, it falls back to weather.
 - **Focal element:** one per calendar day, rotating in name order through
-  `focal_elements` from the bundled manifest. It's held all day, and a new one
-  joins the rotation with the APK that carries it.
+  `focal_elements` from the share's manifest. It's held all day, and a new one
+  joins the rotation once it's published.
 - **Fallback chain:** exact image → same focal/season/time `clear` → another
   focal's season/time `clear` → plain black. A missing sun or season entity
   isn't guessed around; the config page says which one is missing.
@@ -466,8 +529,9 @@ images; new images or focal elements reach the TVs with the next
 - **Refresh:** every 5 minutes while HOME is showing (the client is REST-only,
   no websocket), at midnight, and right after a settings change. It crossfades
   over 1.5 s, only when the chosen path changes.
-- **Startup and decoding:** the last pick shows straight away on start, and it
-  stays up while Home Assistant is unreachable. Decoding happens off the main
+- **Startup and decoding:** the last pick shows straight away on start, from
+  the TV's own copy, and it stays up while Home Assistant or the NAS is
+  unreachable. Decoding happens off the main
   thread at display size, so 4K WebPs load at 1920×1080 on these SHIELDs.
 - **Readability and layout:**
   - A left-to-right black gradient sits behind the UI: 75% at the left edge in
