@@ -147,6 +147,30 @@
     header { padding: 12px 16px; flex-wrap: wrap; }
     .grid, .grid3, .grid5 { grid-template-columns: 1fr; }
   }
+  /* Resource monitor */
+  .res { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tile { background: var(--field); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  .tile .k { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  .tile .v { font-size: 24px; font-weight: 300; font-variant-numeric: tabular-nums; margin: 2px 0 6px; white-space: nowrap; }
+  .tile .v small { font-size: 13px; color: var(--dim); }
+  .tile .sub { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  .tile .sub b { color: var(--fg); font-weight: 500; }
+  .tile .warn { color: var(--bad); font-size: 12px; margin-top: 4px; }
+  .meter { height: 8px; background: #262626; border-radius: 4px; overflow: hidden; }
+  .meter > div { height: 100%; background: var(--fg); border-radius: 4px; transition: width .4s; }
+  .meter.high > div { background: var(--bad); }
+  .spark { position: relative; margin-top: 8px; }
+  .spark svg { display: block; width: 100%; height: 40px; overflow: visible; }
+  .spark .line { fill: none; stroke: var(--fg); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .spark .area { fill: rgba(242,242,242,.08); stroke: none; }
+  .spark .base { stroke: #2a2a2a; stroke-width: 1; }
+  .spark .cross { stroke: #666; stroke-width: 1; }
+  .spark .dot { fill: var(--fg); stroke: var(--field); stroke-width: 2; }
+  .spark .name { color: var(--dim); font-size: 11px; display: flex; justify-content: space-between; }
+  .spark .tip { color: var(--fg); }
+  #calm-master.mixed { border-style: dashed; }
+  .res-foot { color: var(--dim); font-size: 12px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  @media (max-width: 640px) { .res { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -156,6 +180,7 @@
     <div class="device" id="device"></div>
   </div>
   <div class="spacer"></div>
+  <button id="calm-master" title="Calm mode for the visualizer and the ambilight together; applies at once">☾ Calm</button>
   <button id="shot-take" title="Take a screenshot of what the TV shows">Screenshot</button>
   <span id="status">Loading…</span>
   <button class="primary" id="save" disabled>Save</button>
@@ -176,6 +201,42 @@
 </dialog>
 
 <main>
+  <section id="resources">
+    <h2>Resources</h2>
+    <p class="hint">This SHIELD, with the launcher's own share underneath. Updated every 2 seconds while this page is
+      open; the lines show the last 5 minutes (hover for values).</p>
+    <div class="res">
+      <div class="tile">
+        <div class="k">CPU</div>
+        <div class="v" id="res-cpu">–</div>
+        <div class="spark" id="res-cpu-spark"></div>
+        <div class="sub" id="res-cpu-sub"></div>
+      </div>
+      <div class="tile">
+        <div class="k">RAM</div>
+        <div class="v" id="res-ram">–</div>
+        <div class="meter" id="res-ram-meter"><div style="width:0"></div></div>
+        <div class="spark" id="res-ram-spark"></div>
+        <div class="sub" id="res-ram-sub"></div>
+      </div>
+      <div class="tile">
+        <div class="k">Storage</div>
+        <div class="v" id="res-disk">–</div>
+        <div class="meter" id="res-disk-meter"><div style="width:0"></div></div>
+        <div class="warn" id="res-disk-warn" hidden></div>
+        <div class="sub" id="res-disk-sub"></div>
+      </div>
+      <div class="tile">
+        <div class="k">Network</div>
+        <div class="v" id="res-net">–</div>
+        <div class="spark" id="res-in-spark"></div>
+        <div class="spark" id="res-out-spark"></div>
+        <div class="sub" id="res-net-sub"></div>
+      </div>
+    </div>
+    <div class="res-foot" id="res-foot"></div>
+  </section>
+
   <section>
     <h2>Pinned apps</h2>
     <p class="hint">Shown as banners at the top of the home screen, in this order.</p>
@@ -2825,6 +2886,210 @@ renderVisualizerNow();
 setInterval(renderVisualizerNow, 5000);
 setInterval(pollAmbilight, 1500);
 pollAmbilight();
+
+// ------------------------------------------------------------- resources
+
+const RES_MS = 2000, RES_POINTS = 150;   // 5 minutes
+const res = { prev: null, hist: { cpu: [], ram: [], rx: [], tx: [] }, timer: null };
+
+function fmtBytes(b) {
+  if (b == null || isNaN(b)) return '–';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (Math.abs(b) >= 1000 && i < u.length - 1) { b /= 1000; i++; }
+  return (i === 0 ? Math.round(b) : b.toFixed(b < 10 ? 2 : b < 100 ? 1 : 0)) + ' ' + u[i];
+}
+function fmtRate(bytesPerSec) {
+  const bits = bytesPerSec * 8;
+  if (bits < 1e3) return Math.round(bits) + ' bit/s';
+  if (bits < 1e6) return (bits / 1e3).toFixed(bits < 1e4 ? 1 : 0) + ' kbit/s';
+  return (bits / 1e6).toFixed(bits < 1e7 ? 2 : 1) + ' Mbit/s';
+}
+function fmtPct(p) { return p == null || isNaN(p) ? '–' : (p < 10 ? p.toFixed(1) : Math.round(p)) + '%'; }
+function fmtAge(ms) {
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  return d ? `${d} d ${h % 24} h` : h ? `${h} h ${m % 60} min` : `${m} min`;
+}
+
+/** A single-series trend line with a hover crosshair; values are [at ms, value]. */
+function sparkline(el, name, points, fmt, maxHint) {
+  if (!el._init) {
+    el.innerHTML = `<div class="name"><span>${esc(name)}</span><span class="tip"></span></div>` +
+      '<svg preserveAspectRatio="none"><line class="base"/><path class="area"/><path class="line"/>' +
+      '<line class="cross" hidden/><circle class="dot" r="4" hidden/></svg>';
+    const svg = el.querySelector('svg');
+    svg.addEventListener('mousemove', e => { el._hover = e.offsetX / svg.clientWidth; drawSpark(el); });
+    svg.addEventListener('mouseleave', () => { el._hover = null; drawSpark(el); });
+    el._init = true;
+  }
+  el._data = { points, fmt, maxHint };
+  drawSpark(el);
+}
+function drawSpark(el) {
+  const { points, fmt, maxHint } = el._data;
+  const svg = el.querySelector('svg'), w = svg.clientWidth || 300, h = 40;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  const base = svg.querySelector('.base');
+  base.setAttribute('x1', 0); base.setAttribute('x2', w); base.setAttribute('y1', h - 1); base.setAttribute('y2', h - 1);
+  const tip = el.querySelector('.tip'), cross = svg.querySelector('.cross'), dot = svg.querySelector('.dot');
+  if (points.length < 2) {
+    svg.querySelector('.line').setAttribute('d', ''); svg.querySelector('.area').setAttribute('d', '');
+    tip.textContent = points.length ? fmt(points[0][1]) : ''; cross.hidden = dot.hidden = true;
+    return;
+  }
+  const now = points[points.length - 1][0], span = RES_MS * (RES_POINTS - 1);
+  const max = Math.max(maxHint || 0, ...points.map(p => p[1])) || 1;
+  const x = t => w - (now - t) / span * w, y = v => h - 2 - v / max * (h - 6);
+  const xy = points.map(p => [x(p[0]), y(p[1])]);
+  const d = xy.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  svg.querySelector('.line').setAttribute('d', d);
+  svg.querySelector('.area').setAttribute('d', d + `L${xy[xy.length - 1][0].toFixed(1)} ${h}L${xy[0][0].toFixed(1)} ${h}Z`);
+  let i = points.length - 1;
+  if (el._hover != null) {
+    const hx = el._hover * w;
+    i = xy.reduce((best, p, j) => Math.abs(p[0] - hx) < Math.abs(xy[best][0] - hx) ? j : best, 0);
+  }
+  const hovering = el._hover != null;
+  cross.hidden = dot.hidden = !hovering;
+  if (hovering) {
+    cross.setAttribute('x1', xy[i][0]); cross.setAttribute('x2', xy[i][0]); cross.setAttribute('y1', 0); cross.setAttribute('y2', h);
+    dot.setAttribute('cx', xy[i][0]); dot.setAttribute('cy', xy[i][1]);
+  }
+  const ago = Math.round((now - points[i][0]) / 1000);
+  tip.textContent = fmt(points[i][1]) + (hovering && ago ? ` · ${ago} s ago` : '');
+}
+
+function push(list, at, v) {
+  if (v == null || isNaN(v)) return;
+  list.push([at, v]);
+  while (list.length > RES_POINTS) list.shift();
+}
+
+function meter(id, frac) {
+  const m = $(id);
+  m.firstElementChild.style.width = Math.max(0, Math.min(100, frac * 100)).toFixed(1) + '%';
+  m.classList.toggle('high', frac >= 0.9);
+}
+
+async function pollResources() {
+  let s;
+  try { s = await (await fetch('/api/resources')).json(); } catch (e) { return; }
+  const p = res.prev, d = s.device, a = s.app, H = res.hist;
+  const dt = p ? (s.at - p.at) / 1000 : 0;
+
+  // CPU. Android 11 keeps apps from the SHIELD's total CPU use (/proc/stat and
+  // the cpuinfo service); where that's so, the cores' clock speed stands in:
+  // the governor raises it as load rises.
+  let cpu = null, cpuFmt = fmtPct, cpuMax = 100, cpuName = 'SHIELD';
+  if (d.cpuTotalTicks != null) {
+    cpu = p && p.device.cpuTotalTicks != null && d.cpuTotalTicks > p.device.cpuTotalTicks
+      ? (d.cpuBusyTicks - p.device.cpuBusyTicks) / (d.cpuTotalTicks - p.device.cpuTotalTicks) * 100 : null;
+    $('res-cpu').innerHTML = fmtPct(cpu) + ` <small>of ${s.cores} cores</small>`;
+  } else if (d.cpuMhz && d.cpuMhz.length) {
+    cpu = d.cpuMhz.reduce((x, y) => x + y, 0) / d.cpuMhz.length;
+    cpuFmt = v => Math.round(v) + ' MHz'; cpuMax = d.cpuMaxMhz || null; cpuName = 'Clock speed (average of cores)';
+    $('res-cpu').innerHTML = `${Math.round(cpu)} MHz <small>of ${d.cpuMaxMhz} MHz max` +
+      (d.cpuMaxMhz ? ` (${Math.round(cpu / d.cpuMaxMhz * 100)}%)` : '') + '</small>';
+  } else {
+    $('res-cpu').innerHTML = '– <small>not readable</small>';
+  }
+  const appCpu = p && a.cpuMs != null && p.app.cpuMs != null && dt > 0
+    ? (a.cpuMs - p.app.cpuMs) / (dt * 1000 * s.cores) * 100 : null;
+  push(H.cpu, s.at, cpu);
+  sparkline($('res-cpu-spark'), cpuName, H.cpu, cpuFmt, cpuMax);
+  $('res-cpu-sub').innerHTML = `Launcher <b>${fmtPct(appCpu)}</b> of ${s.cores} cores` +
+    (a.threads ? ` · ${a.threads} threads` : '') +
+    (d.cpuTotalTicks == null && d.cpuMhz ? '<br>Android doesn\'t let apps see total CPU use; the clock rises with load.' : '');
+
+  // RAM
+  const used = d.memTotal - d.memAvailable;
+  $('res-ram').innerHTML = `${fmtBytes(used)} <small>used of ${fmtBytes(d.memTotal)}</small>`;
+  meter('res-ram-meter', used / d.memTotal);
+  push(H.ram, s.at, used);
+  sparkline($('res-ram-spark'), 'SHIELD used', H.ram, fmtBytes, d.memTotal);
+  const parts = a.pssPartsKb || {};
+  const partText = ['native', 'graphics', 'code', 'java', 'other'].filter(k => parts[k] > 0)
+    .map(k => `${k} ${fmtBytes(parts[k] * 1000)}`).join(' · ');
+  $('res-ram-sub').innerHTML = `Launcher <b>${fmtBytes(a.pssKb * 1000)}</b>` + (partText ? `<br>${esc(partText)}` : '') +
+    (d.memLow ? '<br><span style="color:var(--bad)">Android reports low memory</span>' : '');
+
+  // Storage
+  const dUsed = d.storageTotal - d.storageFree, frac = dUsed / d.storageTotal;
+  $('res-disk').innerHTML = `${fmtBytes(dUsed)} <small>used of ${fmtBytes(d.storageTotal)}</small>`;
+  meter('res-disk-meter', frac);
+  $('res-disk-warn').hidden = frac < 0.9;
+  $('res-disk-warn').textContent = `Almost full: ${fmtBytes(d.storageFree)} free`;
+  $('res-disk-sub').innerHTML = `${fmtBytes(d.storageFree)} free · Launcher <b>${fmtBytes(a.apkBytes + a.dataBytes)}</b>` +
+    `<br>app ${fmtBytes(a.apkBytes)} · data ${fmtBytes(a.dataBytes)} (background cache ${fmtBytes(a.backgroundCacheBytes)})`;
+
+  // Network: rates from the byte counters (negative if a counter reset).
+  const rate = (now, before) => p && dt > 0 && now >= 0 && before >= 0 && now >= before ? (now - before) / dt : null;
+  const rx = rate(d.rxBytes, p && p.device.rxBytes), tx = rate(d.txBytes, p && p.device.txBytes);
+  const arx = rate(a.rxBytes, p && p.app.rxBytes), atx = rate(a.txBytes, p && p.app.txBytes);
+  $('res-net').innerHTML = rx == null ? '–' : `↓ ${fmtRate(rx)} <small>in</small> ↑ ${fmtRate(tx)} <small>out</small>`;
+  push(H.rx, s.at, rx); push(H.tx, s.at, tx);
+  sparkline($('res-in-spark'), 'In (↓)', H.rx, fmtRate);
+  sparkline($('res-out-spark'), 'Out (↑)', H.tx, fmtRate);
+  $('res-net-sub').innerHTML = arx == null ? '' :
+    `Launcher <b>↓ ${fmtRate(arx)} ↑ ${fmtRate(atx)}</b><br>Since boot: ↓ ${fmtBytes(d.rxBytes)} ↑ ${fmtBytes(d.txBytes)}`;
+
+  $('res-foot').textContent = `SHIELD up ${fmtAge(d.uptimeMs)}` +
+    (a.startedMs != null ? ` · launcher up ${fmtAge(s.at - a.startedMs)}` : '');
+  res.prev = s;
+}
+
+function resourcesTick() {
+  clearTimeout(res.timer);
+  if (document.visibilityState !== 'visible') return;
+  Promise.all([pollResources(), pollCalm()]).finally(() => { res.timer = setTimeout(resourcesTick, RES_MS); });
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { res.prev = null; resourcesTick(); }
+  else clearTimeout(res.timer);
+});
+resourcesTick();
+
+// ------------------------------------------------------------- calm mode
+
+/**
+ * The header's master switch: calm mode for the visualizer and the ambilight
+ * at once, saved straight away like holding down on the remote. The two
+ * sections' own checkboxes follow it, so a later Save doesn't undo it.
+ */
+let calmState = null;
+
+function showCalm(state) {
+  if (!state || state === calmState) return;
+  calmState = state;
+  const b = $('calm-master');
+  b.classList.toggle('on', state === 'on');
+  b.classList.toggle('mixed', state === 'mixed');
+  b.textContent = state === 'on' ? '☾ Calm on' : state === 'mixed' ? '☾ Calm (one on)' : '☾ Calm';
+  b.setAttribute('aria-pressed', state === 'on' ? 'true' : state === 'mixed' ? 'mixed' : 'false');
+  if (state === 'mixed') return;
+  const on = state === 'on';
+  if ($('viz-calm')) $('viz-calm').checked = on;
+  if ($('amb-calm')) $('amb-calm').checked = on;
+  if (typeof draft !== 'undefined' && draft && draft.ambilight) draft.ambilight.calm = on;
+}
+
+$('calm-master').onclick = async () => {
+  const b = $('calm-master');
+  b.disabled = true;
+  try {
+    // Mixed counts as off: one press makes both calm.
+    const r = await post('/api/calm', {on: calmState !== 'on'});
+    showCalm(r.calm);
+  } catch (e) {
+    b.title = 'Could not reach the TV: ' + e.message;
+  } finally {
+    b.disabled = false;
+  }
+};
+
+async function pollCalm() {
+  try { showCalm((await (await fetch('/api/calm')).json()).calm); } catch (e) { }
+}
 </script>
 </body>
 </html>

@@ -192,6 +192,14 @@ final class WebConfigServer implements Runnable {
                     try (InputStream f = new java.io.FileInputStream(log)) { crashes = HomeAssistant.readAll(f); }
                 }
                 send(client, 200, "text/plain; charset=utf-8", crashes);
+            } else if (method.equals("GET") && path.equals("/api/calm")) {
+                send(client, 200, "application/json", new JSONObject().put("calm", store.calmState()).toString());
+            } else if (method.equals("POST") && path.equals("/api/calm")) {
+                // Saved at once, not with the page's Save, like holding down on the remote.
+                store.setCalm(new JSONObject(text).getBoolean("on"));
+                send(client, 200, "application/json", new JSONObject().put("calm", store.calmState()).toString());
+            } else if (method.equals("GET") && path.equals("/api/resources")) {
+                send(client, 200, "application/json", Resources.snapshot(context).toString());
             } else if (method.equals("GET") && path.equals("/api/state")) {
                 send(client, 200, "application/json", state().toString());
             } else if (method.equals("POST") && path.equals("/api/state")) {
