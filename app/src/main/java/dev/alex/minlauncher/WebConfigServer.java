@@ -197,6 +197,23 @@ final class WebConfigServer implements Runnable {
                     try (InputStream f = new java.io.FileInputStream(log)) { crashes = HomeAssistant.readAll(f); }
                 }
                 send(client, 200, "text/plain; charset=utf-8", crashes);
+            } else if (method.equals("GET") && path.equals("/api/media")) {
+                JSONObject m = MediaNow.info(context);
+                android.media.AudioManager audio = (android.media.AudioManager)
+                        context.getSystemService(Context.AUDIO_SERVICE);
+                int music = android.media.AudioManager.STREAM_MUSIC;
+                m.put("volume", audio.getStreamVolume(music)).put("volumeMax", audio.getStreamMaxVolume(music));
+                if (android.os.Build.VERSION.SDK_INT >= 23) m.put("muted", audio.isStreamMute(music));
+                send(client, 200, "application/json", m.toString());
+            } else if (method.equals("GET") && path.equals("/api/media/art")) {
+                send(client, 200, "application/json", new JSONObject().put("art", MediaNow.art()).toString());
+            } else if (method.equals("POST") && path.equals("/api/media")) {
+                String what = new JSONObject(text).getString("action");
+                if (!java.util.Arrays.asList("prev", "toggle", "next", "volup", "voldown", "mute").contains(what)) {
+                    throw new JSONException("Unknown media action " + what);
+                }
+                MediaNow.action(context, what);
+                sendResult(client, () -> "Sent");
             } else if (method.equals("GET") && path.equals("/api/controls")) {
                 // The header's switches: visualizer, ambilight and calm mode, in one poll.
                 Visualizer v = visualizer;
