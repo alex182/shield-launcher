@@ -81,6 +81,7 @@ final class MediaNow {
             o.put("app", label(c, pkg)).put("title", title).put("artist", artist).put("album", album)
                     .put("playing", playing).put("position", pos).put("duration", duration <= 0 ? -1 : duration)
                     .put("speed", st == null ? 0 : st.getPlaybackSpeed())
+                    .put("pkg", pkg)
                     .put("key", pkg + "\n" + title + "\n" + artist + "\n" + album);
             o.put("art", artFor(md, pkg + "\n" + title + "\n" + album) ? artKey : "");
         } catch (JSONException e) {
@@ -92,8 +93,19 @@ final class MediaNow {
     /** The current track's art as a data: URL, "" for none; asked for when {@code info}'s art changes. */
     static synchronized String art() { return artUrl; }
 
-    /** "prev", "toggle", "next": to the session if there's access, else as a media key. */
+    /**
+     * "prev", "toggle", "next": to the session if there's access, else as a
+     * media key. "volup", "voldown", "mute": the media volume, which the
+     * SHIELD passes on over HDMI-CEC when the TV or receiver controls it.
+     */
     static void action(Context c, String what) {
+        if (what.equals("volup") || what.equals("voldown") || what.equals("mute")) {
+            AudioManager audio = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
+            int dir = what.equals("volup") ? AudioManager.ADJUST_RAISE
+                    : what.equals("voldown") ? AudioManager.ADJUST_LOWER : AudioManager.ADJUST_TOGGLE_MUTE;
+            audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, AudioManager.FLAG_SHOW_UI);
+            return;
+        }
         MediaController mc = active(c);
         if (mc != null) {
             MediaController.TransportControls t = mc.getTransportControls();

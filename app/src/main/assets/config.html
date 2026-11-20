@@ -169,6 +169,31 @@
   .spark .name { color: var(--dim); font-size: 11px; display: flex; justify-content: space-between; }
   .spark .tip { color: var(--fg); }
   #calm-master.mixed { border-style: dashed; }
+
+  /* Controls drawer: slides in from the right, over the page. */
+  #drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 3; width: min(320px, 88vw);
+    background: #0b0b0b; border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0,0,0,.6);
+    padding: 14px 16px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+  }
+  .drawer-top { display: flex; justify-content: space-between; align-items: center; }
+  .drawer-sec { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .drawer-sec .k { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+  button.wide { display: block; width: 100%; text-align: left; padding: 9px 12px; margin-top: 6px; font-size: 14px; }
+  .np { display: flex; gap: 10px; align-items: center; min-height: 56px; }
+  .np img { width: 56px; height: 56px; border-radius: 6px; object-fit: cover; flex: none; }
+  .np-text { min-width: 0; }
+  .np-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .np-sub { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .np-bar { height: 4px; background: #262626; border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .np-bar > div { height: 100%; background: var(--fg); width: 0; }
+  .np-time { color: var(--dim); font-size: 11px; margin-top: 3px; font-variant-numeric: tabular-nums; min-height: 15px; }
+  .transport { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .transport button { flex: 1; font-size: 18px; padding: 8px 0; }
+  .transport.vol button { font-size: 15px; }
+  .transport.vol span { flex: 1.4; text-align: center; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .playing-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-left: 7px; vertical-align: middle; }
+
   .res-foot { color: var(--dim); font-size: 12px; margin-top: 10px; font-variant-numeric: tabular-nums; }
   @media (max-width: 640px) { .res { grid-template-columns: 1fr; } }
 </style>
@@ -180,13 +205,50 @@
     <div class="device" id="device"></div>
   </div>
   <div class="spacer"></div>
-  <button id="viz-master" title="Show or close the music visualizer on the TV">♫ Visualizer</button>
-  <button id="amb-master" title="Turn the ambilight on or off">☀ Ambilight</button>
-  <button id="calm-master" title="Calm mode for the visualizer and the ambilight together; applies at once">☾ Calm</button>
-  <button id="shot-take" title="Take a screenshot of what the TV shows">Screenshot</button>
   <span id="status">Loading…</span>
   <button class="primary" id="save" disabled>Save</button>
+  <button id="drawer-open" aria-controls="drawer" aria-expanded="false" title="Media, visualizer, ambilight and calm mode">☰ Controls<span class="playing-dot" id="drawer-dot" hidden></span></button>
 </header>
+
+<aside id="drawer" aria-label="TV controls" hidden>
+  <div class="drawer-top">
+    <b>Controls</b>
+    <button id="drawer-close" title="Close">✕</button>
+  </div>
+
+  <div class="drawer-sec">
+    <div class="k">Now playing</div>
+    <div class="np">
+      <img id="np-art" alt="" hidden>
+      <div class="np-text">
+        <div class="np-title" id="np-title">Nothing playing</div>
+        <div class="np-sub" id="np-sub"></div>
+      </div>
+    </div>
+    <div class="np-bar" id="np-bar" hidden><div></div></div>
+    <div class="np-time" id="np-time"></div>
+    <div class="transport">
+      <button data-media="prev" title="Previous">⏮</button>
+      <button data-media="toggle" id="np-toggle" title="Play or pause">⏯</button>
+      <button data-media="next" title="Next">⏭</button>
+    </div>
+    <div class="transport vol">
+      <button data-media="voldown" title="Volume down">−</button>
+      <span id="np-vol" title="Media volume">–</span>
+      <button data-media="volup" title="Volume up">+</button>
+      <button data-media="mute" id="np-mute" title="Mute">Mute</button>
+    </div>
+    <div class="result" id="np-result"></div>
+  </div>
+
+  <div class="drawer-sec">
+    <div class="k">On the TV</div>
+    <button id="viz-master" class="wide" title="Show or close the music visualizer on the TV">♫ Visualizer</button>
+    <button id="amb-master" class="wide" title="Turn the ambilight on or off">☀ Ambilight</button>
+    <button id="calm-master" class="wide" title="Calm mode for the visualizer and the ambilight together; applies at once">☾ Calm</button>
+    <button id="shot-take" class="wide" title="Take a screenshot of what the TV shows">Screenshot</button>
+  </div>
+</aside>
 
 <dialog id="shot" style="max-width:min(1100px, 96vw); width:auto">
   <div class="inline" style="justify-content:space-between; margin-bottom:8px">
@@ -3045,7 +3107,7 @@ async function pollResources() {
 function resourcesTick() {
   clearTimeout(res.timer);
   if (document.visibilityState !== 'visible') return;
-  Promise.all([pollResources(), pollControls()]).finally(() => { res.timer = setTimeout(resourcesTick, RES_MS); });
+  Promise.all([pollResources(), pollControls(), pollMedia()]).finally(() => { res.timer = setTimeout(resourcesTick, RES_MS); });
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { res.prev = null; resourcesTick(); }
@@ -3136,6 +3198,79 @@ $('amb-master').onclick = () => pressSwitch('amb-master', () =>
 async function pollControls() {
   try { showControls(await (await fetch('/api/controls')).json()); } catch (e) { }
 }
+
+// ---------------------------------------------------------------- drawer
+
+const drawer = { open: false, artKey: null, media: null };
+
+function setDrawer(open) {
+  drawer.open = open;
+  $('drawer').hidden = !open;
+  $('drawer-open').setAttribute('aria-expanded', String(open));
+  try { localStorage.setItem('drawerOpen', open ? '1' : ''); } catch (e) { }
+  if (open) pollMedia();
+}
+$('drawer-open').onclick = () => setDrawer(!drawer.open);
+$('drawer-close').onclick = () => setDrawer(false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawer.open && !document.querySelector('dialog[open]')) setDrawer(false); });
+
+function fmtClock(ms) {
+  if (ms == null || ms < 0) return '';
+  const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = String(t % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
+async function pollMedia() {
+  let m;
+  try { m = await (await fetch('/api/media')).json(); } catch (e) { return; }
+  drawer.media = m;
+  $('drawer-dot').hidden = !m.playing;
+  if (!drawer.open) return;
+  if (m.access === false) {
+    $('np-title').textContent = 'No access to media sessions';
+    $('np-sub').textContent = 'Run ./build.sh install to allow the notification listener; buttons still send media keys.';
+  } else if (!m.title && !m.app) {
+    $('np-title').textContent = 'Nothing playing'; $('np-sub').textContent = '';
+  } else {
+    $('np-title').textContent = m.title || m.app;
+    $('np-sub').textContent = [m.artist, m.album, m.title ? m.app : ''].filter(Boolean).join(' · ');
+  }
+  const known = m.duration > 0 && m.position >= 0;
+  $('np-bar').hidden = !known;
+  if (known) $('np-bar').firstElementChild.style.width = (m.position / m.duration * 100).toFixed(1) + '%';
+  $('np-time').textContent = known ? `${fmtClock(m.position)} / ${fmtClock(m.duration)}` : m.position > 0 ? fmtClock(m.position) : '';
+  $('np-toggle').textContent = m.playing ? '⏸' : '▶';
+  $('np-toggle').title = m.playing ? 'Pause' : 'Play';
+  if (m.volumeMax) $('np-vol').textContent = m.muted ? 'Muted' : `${m.volume} / ${m.volumeMax}`;
+  $('np-mute').textContent = m.muted ? 'Unmute' : 'Mute';
+  // The art only when the track changes: it's a data: URL of up to a few tens of KB.
+  if ((m.art || '') !== drawer.artKey) {
+    drawer.artKey = m.art || '';
+    let url = '';
+    if (m.art) { try { url = (await (await fetch('/api/media/art')).json()).art; } catch (e) { } }
+    $('np-art').hidden = !url;
+    if (url) $('np-art').src = url;
+  }
+}
+
+$('drawer').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-media]');
+  if (!b) return;
+  b.disabled = true;
+  try {
+    const r = await post('/api/media', {action: b.dataset.media});
+    $('np-result').className = 'result' + (r.ok === false || r.error ? ' bad' : '');
+    $('np-result').textContent = r.ok === false || r.error ? (r.message || r.error) : '';
+  } catch (err) {
+    $('np-result').className = 'result bad';
+    $('np-result').textContent = 'Could not reach the TV: ' + err.message;
+  } finally {
+    b.disabled = false;
+    setTimeout(pollMedia, 400);   // the app takes a moment to report the change
+  }
+});
+
+try { if (localStorage.getItem('drawerOpen')) setDrawer(true); } catch (e) { }
 </script>
 </body>
 </html>
