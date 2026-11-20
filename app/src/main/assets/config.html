@@ -160,7 +160,7 @@
   .meter > div { height: 100%; background: var(--fg); border-radius: 4px; transition: width .4s; }
   .meter.high > div { background: var(--bad); }
   .spark { position: relative; margin-top: 8px; }
-  .spark svg { display: block; width: 100%; height: 40px; overflow: visible; }
+  .spark svg { display: block; width: 100%; height: 40px; overflow: hidden; }
   .spark .line { fill: none; stroke: var(--fg); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
   .spark .area { fill: rgba(242,242,242,.08); stroke: none; }
   .spark .base { stroke: #2a2a2a; stroke-width: 1; }
@@ -2889,7 +2889,7 @@ pollAmbilight();
 
 // ------------------------------------------------------------- resources
 
-const RES_MS = 2000, RES_POINTS = 150;   // 5 minutes
+const RES_MS = 2000, RES_SPAN = 5 * 60000;   // poll every 2 s, show the last 5 minutes
 const res = { prev: null, hist: { cpu: [], ram: [], rx: [], tx: [] }, timer: null };
 
 function fmtBytes(b) {
@@ -2937,9 +2937,11 @@ function drawSpark(el) {
     tip.textContent = points.length ? fmt(points[0][1]) : ''; cross.hidden = dot.hidden = true;
     return;
   }
-  const now = points[points.length - 1][0], span = RES_MS * (RES_POINTS - 1);
+  // By time, not by count: polls come a little slower than every RES_MS.
+  const now = points[points.length - 1][0], span = RES_SPAN;
   const max = Math.max(maxHint || 0, ...points.map(p => p[1])) || 1;
-  const x = t => w - (now - t) / span * w, y = v => h - 2 - v / max * (h - 6);
+  // Inset by the hover dot's radius so neither the line nor the dot is clipped.
+  const pad = 5, x = t => w - pad - (now - t) / span * (w - 2 * pad), y = v => h - pad - v / max * (h - 2 * pad);
   const xy = points.map(p => [x(p[0]), y(p[1])]);
   const d = xy.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
   svg.querySelector('.line').setAttribute('d', d);
@@ -2962,7 +2964,7 @@ function drawSpark(el) {
 function push(list, at, v) {
   if (v == null || isNaN(v)) return;
   list.push([at, v]);
-  while (list.length > RES_POINTS) list.shift();
+  while (list.length && list[0][0] < at - RES_SPAN) list.shift();
 }
 
 function meter(id, frac) {
