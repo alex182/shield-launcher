@@ -145,6 +145,10 @@ public class QuickMenuService extends AccessibilityService {
                 () -> handler.post(alerts::test), () -> handler.post(reminders::test),
                 () -> handler.post(reminders::testDigest), (playlist, preset) -> handler.post(() -> visualizer.show(playlist, preset)));
         web.setScreenshots(live -> live ? Screenshot.jpeg(this) : Screenshot.png(this));
+        web.setVisualizer(new WebConfigServer.Visualizer() {
+            @Override public boolean showing() { return visualizer.isShowing(); }
+            @Override public void hide() { handler.post(visualizer::hide); }
+        });
         web.start();
         watcher = new TvWatcher(this, store, visualizer::isShowing);
         watcher.start();
