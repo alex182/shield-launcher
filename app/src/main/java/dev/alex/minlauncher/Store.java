@@ -48,6 +48,7 @@ final class Store {
     static final String KEY_CAMERAS = "cameras";               // comma-joined entity ids
     static final String KEY_SLEEP_MINUTES = "sleep_minutes";   // sleep timer length
     static final String KEY_SLEEP_SHOWN = "sleep_shown";       // Sleep row at the bottom of quick actions
+    static final String KEY_MUSIC_APP = "music_app";           // package the controls drawer's artist shuffle uses; "" = first of MusicApp.PREFERRED
     static final String KEY_VISUALIZER_HOLD = "visualizer_hold";   // hold play/pause for the music visualizer
     static final String KEY_VISUALIZER = "visualizer";         // JSON, see visualizer()
     static final String KEY_VISUALIZER_STATUS = "visualizer_status";   // JSON: what it listens to, written by VisualizerOverlay
@@ -223,6 +224,9 @@ final class Store {
 
     String singlePress() { return prefs.getString(KEY_SINGLE_PRESS, DEFAULT_SINGLE_PRESS); }
     void setSinglePress(String pkg) { prefs.edit().putString(KEY_SINGLE_PRESS, pkg).apply(); }
+
+    String musicApp() { return prefs.getString(KEY_MUSIC_APP, ""); }
+    void setMusicApp(String pkg) { prefs.edit().putString(KEY_MUSIC_APP, pkg).apply(); }
 
     boolean visualizerHold() { return prefs.getBoolean(KEY_VISUALIZER_HOLD, true); }
 

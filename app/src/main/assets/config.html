@@ -192,6 +192,22 @@
   .transport button { flex: 1; font-size: 18px; padding: 8px 0; }
   .transport.vol button { font-size: 15px; }
   .transport.vol span { flex: 1.4; text-align: center; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .music-artist { display: flex; gap: 8px; margin-top: 10px; }
+  .music-artist select { flex: 1; min-width: 0; }
+  .music-artist button { flex: none; }
+  .albums { margin-top: 8px; max-height: 46vh; overflow-y: auto; }
+  .album { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+  .album:first-child { border-top: 0; }
+  .album .cover { width: 40px; height: 40px; border-radius: 4px; background: var(--field); flex: none; object-fit: cover; }
+  .album .t { flex: 1; min-width: 0; font-size: 13px; }
+  .album .t div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .album .t small { color: var(--dim); font-size: 11px; }
+  .album button { flex: none; padding: 4px 8px; font-size: 16px; line-height: 1; }
+  .hint-small { color: var(--dim); font-size: 11px; margin-top: 8px; }
+  .hint-small a { color: var(--dim); }
+  .music-row { display: flex; gap: 8px; }
+  .music-row input { flex: 1; min-width: 0; }
+  .music-row button { flex: none; }
   .playing-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-left: 7px; vertical-align: middle; }
 
   .res-foot { color: var(--dim); font-size: 12px; margin-top: 10px; font-variant-numeric: tabular-nums; }
@@ -239,6 +255,24 @@
       <button data-media="mute" id="np-mute" title="Mute">Mute</button>
     </div>
     <div class="result" id="np-result"></div>
+  </div>
+
+  <div class="drawer-sec" id="music-sec" hidden>
+    <div class="k" id="music-k">Play an artist</div>
+    <form id="music-form" class="music-row">
+      <input id="music-artist" placeholder="Artist" autocomplete="off" spellcheck="false" enterkeyhint="search">
+      <button type="submit" id="music-go" title="Find the artist and their albums">Find</button>
+    </form>
+    <div id="music-found" hidden>
+      <div class="music-artist">
+        <select id="music-which" title="Other artists with this name"></select>
+        <button id="music-shuffle-artist" title="Play this artist, shuffled"><span class="mdi">&#xF049D;</span> Shuffle</button>
+      </div>
+      <label class="check" style="margin-top:6px"><input type="checkbox" id="music-all"> Live, compilations and soundtracks too</label>
+      <div class="albums" id="music-albums"></div>
+    </div>
+    <div class="result" id="music-result"></div>
+    <div class="hint-small">Albums from <a href="https://musicbrainz.org" target="_blank" rel="noopener">MusicBrainz</a>; <span class="mdi">&#xF040A;</span> plays one in order, <span class="mdi">&#xF049D;</span> shuffles it.</div>
   </div>
 
   <div class="drawer-sec">
@@ -345,6 +379,15 @@
     <label class="check"><input type="checkbox" id="sleep-shown"> Show Sleep in quick actions</label>
     <label for="sleep-minutes">Sleep after (minutes)</label>
     <input type="number" id="sleep-minutes" min="1" max="600" step="1" style="width:90px">
+  </section>
+
+  <section>
+    <h2>Music app</h2>
+    <p class="hint">Plays an artist, shuffled, from the Controls panel (☰). Listed: installed apps that take play
+      requests from other apps. One that only has a media browser (Spotify's TV app) may refuse; then its search opens
+      on the TV with the artist filled in.</p>
+    <label for="music-app">App</label>
+    <select id="music-app" style="max-width:360px"></select>
   </section>
 
   <section>
@@ -1558,7 +1601,17 @@ function appLabel(pkg) {
   return a ? a.label : pkg || 'an unnamed app';
 }
 
+function loadMusicApp() {
+  const apps = state.musicApps || [];
+  $('music-app').innerHTML = '<option value="">Automatic (TIDAL, else Spotify)</option>' +
+    apps.map(a => `<option value="${esc(a.pkg)}">${esc(a.label)}</option>`).join('') +
+    (state.musicApp && !apps.some(a => a.pkg === state.musicApp)
+      ? `<option value="${esc(state.musicApp)}">${esc(state.musicApp)} (not installed)</option>` : '');
+  $('music-app').value = state.musicApp || '';
+}
+
 function loadVisualizer() {
+  loadMusicApp();
   const v = state.visualizer;
   $('visualizer-hold').checked = state.visualizerHold;
   $('viz-source').value = v.source;
@@ -2906,6 +2959,7 @@ $('save').onclick = async () => {
     digestShown: $('calendar-digest-shown').checked,
     digestTime: $('calendar-digest-time').value,
     visualizerHold: $('visualizer-hold').checked,
+    musicApp: $('music-app').value,
     visualizer: visualizerFields(),
     ambilight: draft.ambilight,
     modeLights: draft.modeLights,
@@ -3224,6 +3278,9 @@ async function pollMedia() {
   let m;
   try { m = await (await fetch('/api/media')).json(); } catch (e) { return; }
   drawer.media = m;
+  $('music-sec').hidden = !m.musicApp;
+  if (m.musicApp) $('music-k').textContent = 'Play an artist on ' + m.musicApp.label;
+  if (m.musicStatus && drawer.musicAsked) $('music-result').textContent = m.musicStatus;
   $('drawer-dot').hidden = !m.playing;
   if (!drawer.open) return;
   if (m.access === false) {
@@ -3267,6 +3324,146 @@ $('drawer').addEventListener('click', async e => {
   } finally {
     b.disabled = false;
     setTimeout(pollMedia, 400);   // the app takes a moment to report the change
+  }
+});
+
+// ------------------------------------------------- artists and albums
+
+/**
+ * MusicBrainz, straight from this page (it allows other sites, and asks for
+ * at most one request a second): the artist, their links to streaming
+ * services, and their albums. The TV then plays one; see MusicApp.java.
+ */
+const music = { artists: [], artist: null, links: [], albums: [], albumLinks: {} };
+let mbQueue = Promise.resolve(), mbLast = 0;
+
+function mb(path) {
+  const run = async () => {
+    const wait = mbLast + 1100 - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    mbLast = Date.now();
+    const url = 'https://musicbrainz.org/ws/2/' + path + (path.includes('?') ? '&' : '?') + 'fmt=json';
+    for (let attempt = 0; ; attempt++) {
+      const r = await fetch(url, {headers: {Accept: 'application/json'}});
+      if (r.ok) return r.json();
+      // 503: too many requests (theirs or anyone's on this address); it passes in a moment.
+      if (r.status !== 503 || attempt === 2) throw new Error('MusicBrainz answered ' + r.status);
+      await new Promise(res => setTimeout(res, 2000 * (attempt + 1)));
+      mbLast = Date.now();
+    }
+  };
+  const p = mbQueue.then(run, run);
+  mbQueue = p.catch(() => {});
+  return p;
+}
+
+/** Links to streaming services, from MusicBrainz relations; the TV uses the ones its app opens. */
+function streamLinks(relations) {
+  const out = [];
+  for (const rel of relations || []) {
+    const u = rel.url && rel.url.resource;
+    if (u && u.startsWith('https://') && /streaming/.test(rel.type || '') && !out.includes(u)) out.push(u);
+  }
+  return out;
+}
+
+function musicSay(text, bad) {
+  $('music-result').className = 'result' + (bad ? ' bad' : '');
+  $('music-result').textContent = text || '';
+}
+
+$('music-form').onsubmit = async e => {
+  e.preventDefault();
+  const name = $('music-artist').value.trim();
+  if (!name) { $('music-artist').focus(); return; }
+  $('music-go').disabled = true;
+  musicSay('Looking up ' + name + '…');
+  try {
+    const q = encodeURIComponent('artist:"' + name.replace(/"/g, '') + '"');
+    const res = await mb('artist?query=' + q + '&limit=8');
+    music.artists = (res.artists || []).filter(a => a.score >= 60);
+    if (!music.artists.length) { $('music-found').hidden = true; musicSay('MusicBrainz has no artist called ' + name, true); return; }
+    $('music-which').innerHTML = music.artists.map((a, i) =>
+      `<option value="${i}">${esc(a.name)}${a.disambiguation ? ' (' + esc(a.disambiguation) + ')' : a.country ? ' (' + esc(a.country) + ')' : ''}</option>`).join('');
+    await pickArtist(0);
+  } catch (err) {
+    musicSay('Could not look it up: ' + err.message, true);
+  } finally {
+    $('music-go').disabled = false;
+  }
+};
+
+$('music-which').onchange = () => pickArtist(+$('music-which').value).catch(err => musicSay(err.message, true));
+$('music-all').onchange = renderAlbums;
+
+async function pickArtist(i) {
+  const a = music.artists[i];
+  music.artist = a; music.links = []; music.albums = [];
+  $('music-found').hidden = false;
+  $('music-albums').innerHTML = '<div class="empty">Loading albums…</div>';
+  musicSay('');
+  const [full, groups] = await Promise.all([
+    mb('artist/' + a.id + '?inc=url-rels'),
+    mb('release-group?artist=' + a.id + '&type=album&limit=100'),
+  ]);
+  if (music.artist !== a) return;   // another was picked meanwhile
+  music.links = streamLinks(full.relations);
+  music.albums = (groups['release-groups'] || [])
+    .sort((x, y) => (y['first-release-date'] || '').localeCompare(x['first-release-date'] || ''));
+  renderAlbums();
+}
+
+function renderAlbums() {
+  const all = $('music-all').checked;
+  const shown = music.albums.filter(g => all || !(g['secondary-types'] || []).length);
+  $('music-albums').innerHTML = shown.length ? shown.map(g => {
+    const kinds = (g['secondary-types'] || []).join(', ');
+    return `<div class="album">
+      <img class="cover" loading="lazy" alt="" src="https://coverartarchive.org/release-group/${esc(g.id)}/front-250"
+        onerror="this.style.visibility='hidden'">
+      <div class="t"><div title="${esc(g.title)}">${esc(g.title)}</div>
+        <small>${esc((g['first-release-date'] || '').slice(0, 4))}${kinds ? ' · ' + esc(kinds) : ''}</small></div>
+      <button data-album="${esc(g.id)}" data-shuffle="false" title="Play in order" aria-label="Play in order"><span class="mdi">&#xF040A;</span></button>
+      <button data-album="${esc(g.id)}" data-shuffle="true" title="Shuffle" aria-label="Shuffle"><span class="mdi">&#xF049D;</span></button>
+    </div>`;
+  }).join('') : `<div class="empty">No ${all ? '' : 'studio '}albums listed${all ? '' : '; tick the box for the rest'}.</div>`;
+}
+
+async function playMusic(body, button) {
+  if (button) button.disabled = true;
+  try {
+    const r = await post('/api/music/play', body);
+    drawer.musicAsked = true;
+    musicSay(r.message || r.error || '', r.ok === false || !!r.error);
+  } catch (err) {
+    musicSay('Could not reach the TV: ' + err.message, true);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+$('music-shuffle-artist').onclick = () => {
+  if (music.artist) playMusic({artist: music.artist.name, links: music.links, shuffle: true}, $('music-shuffle-artist'));
+};
+
+$('music-albums').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-album]');
+  if (!b || !music.artist) return;
+  const g = music.albums.find(x => x.id === b.dataset.album);
+  b.disabled = true;
+  try {
+    if (!music.albumLinks[g.id]) {
+      musicSay('Finding ' + g.title + '…');
+      const rel = await mb('release?release-group=' + g.id + '&inc=url-rels&limit=100');
+      music.albumLinks[g.id] = [].concat(...(rel.releases || []).map(x => streamLinks(x.relations)))
+        .filter((u, i, all) => all.indexOf(u) === i);
+    }
+    await playMusic({artist: music.artist.name, album: g.title, links: music.albumLinks[g.id],
+      shuffle: b.dataset.shuffle === 'true'});
+  } catch (err) {
+    musicSay('Could not look it up: ' + err.message, true);
+  } finally {
+    b.disabled = false;
   }
 });
 
