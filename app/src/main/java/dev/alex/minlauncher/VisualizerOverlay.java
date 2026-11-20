@@ -131,6 +131,15 @@ final class VisualizerOverlay {
 
     boolean isShowing() { return root != null; }
 
+    /** The page's preset commands the config page may send, as the remote's keys do. */
+    static final java.util.List<String> REMOTE = java.util.Arrays.asList("next", "prev", "random", "like", "tagCalm", "hold");
+
+    /** One of {@link #REMOTE}, from the config page; main thread. Ignored when it isn't showing. */
+    void remote(String cmd) {
+        if (web == null || !REMOTE.contains(cmd)) return;
+        web.evaluateJavascript("remote." + cmd + "()", null);
+    }
+
     void toggle() {
         if (root != null) hide();
         else show();

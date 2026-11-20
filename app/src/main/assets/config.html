@@ -257,6 +257,22 @@
     <div class="result" id="np-result"></div>
   </div>
 
+  <div class="drawer-sec" id="viz-sec" hidden>
+    <div class="k">Visualizer preset</div>
+    <div class="np-title" id="viz-preset" title=""></div>
+    <div class="np-sub" id="viz-tags"></div>
+    <div class="transport">
+      <button data-viz="prev" title="Previous preset">⏮</button>
+      <button data-viz="random" title="Random preset"><span class="mdi">&#xF049D;</span></button>
+      <button data-viz="next" title="Next preset">⏭</button>
+    </div>
+    <div class="transport vol">
+      <button data-viz="like" id="viz-like" title="Like this preset">♡ Like</button>
+      <button data-viz="tagCalm" id="viz-tagcalm" title="Calm mode plays the presets tagged calm">☾ Tag calm</button>
+      <button data-viz="hold" title="Stay on this preset, or cycle again">Hold</button>
+    </div>
+  </div>
+
   <div class="drawer-sec" id="music-sec" hidden>
     <div class="k" id="music-k">Play an artist</div>
     <form id="music-form" class="music-row">
@@ -3222,6 +3238,16 @@ let controls = {};
 
 function showControls(c) {
   controls = c;
+  $('viz-sec').hidden = !c.visualizer;
+  if (c.visualizer) {
+    $('viz-preset').textContent = c.preset || '…';
+    $('viz-preset').title = c.preset || '';
+    $('viz-tags').textContent = [c.presetLiked ? 'Liked' : '', c.presetCalm ? 'Tagged calm' : ''].filter(Boolean).join(' · ');
+    $('viz-like').textContent = c.presetLiked ? '♥ Liked' : '♡ Like';
+    $('viz-like').classList.toggle('on', !!c.presetLiked);
+    $('viz-tagcalm').textContent = c.presetCalm ? '☾ Calm' : '☾ Tag calm';
+    $('viz-tagcalm').classList.toggle('on', !!c.presetCalm);
+  }
   showSwitch('viz-master', '♫ Visualizer', c.visualizer);
   // "paused" (screen off or nothing to light) and "test" still count as on: a press turns them off.
   showSwitch('amb-master', '☀ Ambilight', c.ambilight !== 'off',
@@ -3309,6 +3335,17 @@ async function pollMedia() {
     if (url) $('np-art').src = url;
   }
 }
+
+$('viz-sec').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-viz]');
+  if (!b) return;
+  b.disabled = true;
+  try { await post('/api/visualizer/remote', {cmd: b.dataset.viz}); } catch (err) { }
+  finally {
+    b.disabled = false;
+    setTimeout(pollControls, 500);   // the TV's page saves the new preset or tag first
+  }
+});
 
 $('drawer').addEventListener('click', async e => {
   const b = e.target.closest('button[data-media]');

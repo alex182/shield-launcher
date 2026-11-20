@@ -148,6 +148,7 @@ public class QuickMenuService extends AccessibilityService {
         web.setVisualizer(new WebConfigServer.Visualizer() {
             @Override public boolean showing() { return visualizer.isShowing(); }
             @Override public void hide() { handler.post(visualizer::hide); }
+            @Override public void remote(String cmd) { handler.post(() -> visualizer.remote(cmd)); }
         });
         web.start();
         watcher = new TvWatcher(this, store, visualizer::isShowing);

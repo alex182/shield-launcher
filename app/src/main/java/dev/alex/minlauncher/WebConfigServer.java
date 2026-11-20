@@ -50,7 +50,7 @@ final class WebConfigServer implements Runnable {
     void setScreenshots(Screenshots s) { screenshots = s; }
 
     /** The visualizer overlay, for the page's on/off switch; null until the service sets it. */
-    interface Visualizer { boolean showing(); void hide(); }
+    interface Visualizer { boolean showing(); void hide(); void remote(String cmd); }
     private volatile Visualizer visualizer;
     void setVisualizer(Visualizer v) { visualizer = v; }
 
@@ -240,10 +240,26 @@ final class WebConfigServer implements Runnable {
             } else if (method.equals("GET") && path.equals("/api/controls")) {
                 // The header's switches: visualizer, ambilight and calm mode, in one poll.
                 Visualizer v = visualizer;
-                send(client, 200, "application/json", new JSONObject()
-                        .put("visualizer", v != null && v.showing())
+                boolean showing = v != null && v.showing();
+                JSONObject controls = new JSONObject();
+                if (showing) {
+                    // The preset on screen and how it's tagged, for the drawer's preset controls.
+                    String preset = store.visualizerShowing();
+                    controls.put("preset", preset)
+                            .put("presetLiked", contains(store.visualizerLiked(), preset))
+                            .put("presetCalm", contains(store.visualizerCalmPresets(), preset));
+                }
+                send(client, 200, "application/json", controls
+                        .put("visualizer", showing)
                         .put("ambilight", AmbilightService.status().getString("state"))
                         .put("calm", store.calmState()).toString());
+            } else if (method.equals("POST") && path.equals("/api/visualizer/remote")) {
+                String cmd = new JSONObject(text).getString("cmd");
+                if (!VisualizerOverlay.REMOTE.contains(cmd)) throw new JSONException("Unknown command " + cmd);
+                Visualizer v = visualizer;
+                if (v == null || !v.showing()) throw new JSONException("The visualizer isn't showing");
+                v.remote(cmd);
+                sendResult(client, () -> "Sent");
             } else if (method.equals("POST") && path.equals("/api/visualizer/hide")) {
                 Visualizer v = visualizer;
                 if (v != null) v.hide();
@@ -605,6 +621,11 @@ final class WebConfigServer implements Runnable {
                 store.setPercent(Store.KEY_CONTENT_WIDTH, Math.max(30, bg.getInt("contentWidth")));
             }
         }
+    }
+
+    private static boolean contains(JSONArray a, String s) {
+        for (int i = 0; i < a.length(); i++) if (s.equals(a.optString(i))) return true;
+        return false;
     }
 
     private static String trimmed(JSONObject o, String key) throws JSONException {
