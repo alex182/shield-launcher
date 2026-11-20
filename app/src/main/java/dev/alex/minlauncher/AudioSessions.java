@@ -1,15 +1,8 @@
 package dev.alex.minlauncher;
 
 import android.content.Context;
-import android.os.Debug;
-import android.os.ParcelFileDescriptor;
 import android.os.Process;
-import android.util.Log;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,8 +18,6 @@ import java.util.regex.Pattern;
  * output-mix capture (session 0) is not on; see {@link VisualizerOverlay}.
  */
 final class AudioSessions {
-
-    private static final String TAG = "AudioSessions";
 
     private AudioSessions() { }
 
@@ -103,39 +94,7 @@ final class AudioSessions {
 
     /** audio_flinger's dump, "" if it can't be had; a "Permission Denial" line without DUMP. */
     static String dump(Context context) {
-        // A pipe, not a file: SELinux won't let audioserver write to our app
-        // data. The dump is bigger than a pipe holds, so it is read on another
-        // thread while dumpService blocks writing it.
-        ParcelFileDescriptor[] pipe;
-        try {
-            pipe = ParcelFileDescriptor.createPipe();
-        } catch (IOException e) {
-            Log.w(TAG, "No pipe for the audio_flinger dump", e);
-            return "";
-        }
-        ByteArrayOutputStream text = new ByteArrayOutputStream();
-        Thread reader = new Thread(() -> {
-            try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(pipe[0])) {
-                byte[] buf = new byte[16384];
-                for (int n; (n = in.read(buf)) > 0; ) text.write(buf, 0, n);
-            } catch (IOException e) {
-                Log.w(TAG, "audio_flinger dump cut short", e);
-            }
-        }, "audio_flinger dump");
-        reader.start();
-        try {
-            Debug.dumpService("media.audio_flinger", pipe[1].getFileDescriptor(), new String[0]);
-        } finally {
-            try { pipe[1].close(); } catch (IOException ignored) { }
-        }
-        try {
-            reader.join(5000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        synchronized (text) {
-            return new String(text.toByteArray(), StandardCharsets.UTF_8);
-        }
+        return Resources.dump("media.audio_flinger");
     }
 
     static List<Playing> read(Context context) {

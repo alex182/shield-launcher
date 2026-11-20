@@ -108,6 +108,7 @@ final class VisualizerOverlay {
     /** How long select is held to toggle the images rather than hold the preset. */
     private static final long SELECT_LONG_MS = 600;
     private boolean upLong;             // up held this press: calm tag toggled, no like
+    private boolean startedAmbilight;   // show() turned the ambilight on, so hide() turns it off
     private boolean downLong;           // down held this press: calm mode toggled, no random preset
     /** The media controls are open for the remote (Menu): the arrows and select work them. */
     private volatile boolean controls;
@@ -153,6 +154,10 @@ final class VisualizerOverlay {
         showing = true;
         ModeLightsController.get(context).set(ModeLights.VISUALIZER, true);
         AmbilightService.visualizer(true);
+        // The room lights up with it. Only an ambilight started here is
+        // stopped again on close; one already on stays on.
+        startedAmbilight = !AmbilightService.isOn();
+        if (startedAmbilight) AmbilightService.start(context);
         note = "";
         follow.run();
 
@@ -190,6 +195,8 @@ final class VisualizerOverlay {
         if (root == null) return;
         ModeLightsController.get(context).set(ModeLights.VISUALIZER, false);
         AmbilightService.visualizer(false);
+        if (startedAmbilight) AmbilightService.stop(context);
+        startedAmbilight = false;
         try { context.unregisterReceiver(screenOff); } catch (IllegalArgumentException ignored) { }
         wm.removeView(root);
         web.destroy();

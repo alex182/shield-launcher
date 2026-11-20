@@ -377,8 +377,14 @@ final class Store {
      * same. Returns the new state. The config page sets them apart.
      */
     boolean toggleCalm(boolean visualizerShowing) {
+        boolean on = !(visualizerShowing ? visualizer().optBoolean("calm") : ambilight().optBoolean("calm"));
+        setCalm(on);
+        return on;
+    }
+
+    /** Calm mode for the visualizer and the ambilight together (the config page's master switch). */
+    void setCalm(boolean on) {
         JSONObject a = ambilight(), v = visualizer();
-        boolean on = !(visualizerShowing ? v.optBoolean("calm") : a.optBoolean("calm"));
         try {
             a.put("calm", on);
             v.put("calm", on);
@@ -387,7 +393,12 @@ final class Store {
         }
         setAmbilight(a);
         prefs.edit().putString(KEY_VISUALIZER, v.toString()).apply();
-        return on;
+    }
+
+    /** "on" when both are calm, "off" when neither is, else "mixed". */
+    String calmState() {
+        boolean a = ambilight().optBoolean("calm"), v = visualizer().optBoolean("calm");
+        return a && v ? "on" : !a && !v ? "off" : "mixed";
     }
 
     /** Lights switched as the visualizer or the ambilight starts and ends; see {@link ModeLights}. */
