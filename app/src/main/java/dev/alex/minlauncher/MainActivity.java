@@ -94,6 +94,9 @@ public class MainActivity extends Activity {
                     case Store.KEY_BG_SEASON:
                     case Store.KEY_BG_HOLIDAYS:
                     case Store.KEY_BG_OVERRIDE:
+                    case Store.KEY_BG_NFS:
+                    case Store.KEY_BG_NFS_UID:
+                    case Store.KEY_BG_NFS_GID:
                         handler.removeCallbacks(refreshBackground);
                         handler.post(refreshBackground);
                         break;

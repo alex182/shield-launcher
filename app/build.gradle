@@ -50,16 +50,19 @@ android {
     }
 }
 
-// Background images from scripts/generate_backgrounds.py ship in the APK as
-// assets/backgrounds/ (WebPs + manifest.json). output/backgrounds/ is
-// committed; without it the build still works but the launcher stays black.
+// Background images come from an NFS share at run time (BackgroundFiles;
+// tools/publish-backgrounds.sh copies output/backgrounds/ there), so the APK
+// carries none. -PbundleBackgrounds builds them in as assets/backgrounds/
+// instead, for a launcher whose share is left blank (over 1 GB).
+def bundleBackgrounds = project.hasProperty("bundleBackgrounds")
 def bgSource = rootProject.file("output/backgrounds")
 def bgAssets = layout.buildDirectory.dir("generated/background-assets").get().asFile
 def syncBackgrounds = tasks.register("syncBackgrounds", Sync) {
-    from(bgSource) { include "manifest.json", "**/*.webp" }
+    // Not bundling still runs the Sync, from nothing, to clear out a previous bundle.
+    from(bundleBackgrounds ? bgSource : files()) { include "manifest.json", "**/*.webp" }
     into(new File(bgAssets, "backgrounds"))
     doLast {
-        if (!new File(bgSource, "manifest.json").exists()) {
+        if (bundleBackgrounds && !new File(bgSource, "manifest.json").exists()) {
             logger.warn("No ${bgSource}/manifest.json: building without backgrounds")
         }
     }

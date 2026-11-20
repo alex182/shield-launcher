@@ -434,6 +434,9 @@ final class WebConfigServer implements Runnable {
                 .put("holidays", store.bgHolidays())
                 .put("defaultHolidays", Backgrounds.DEFAULT_HOLIDAYS)
                 .put("override", new JSONObject(store.bgOverrideJson()))
+                .put("nfs", store.bgNfs())
+                .put("nfsUid", store.bgNfsUid())
+                .put("nfsGid", store.bgNfsGid())
                 .put("scrimDay", store.scrimDay())
                 .put("scrimNight", store.scrimNight())
                 .put("scrimEnd", store.scrimEnd())
@@ -467,6 +470,15 @@ final class WebConfigServer implements Runnable {
         if (bg != null && bg.has("holidays")) {
             List<String> errors = Backgrounds.parseHolidays(bg.getString("holidays")).errors;
             if (!errors.isEmpty()) throw new JSONException("Holidays: " + errors.get(0));
+        }
+        if (bg != null && bg.has("nfs")) {
+            String nfs = bg.getString("nfs").trim();
+            try {
+                if (!nfs.isEmpty()) Nfs.Spec.parse(nfs);
+                new Nfs.Auth(bg.getInt("nfsUid"), bg.getInt("nfsGid"), new int[0]);
+            } catch (IllegalArgumentException e) {
+                throw new JSONException("Images share: " + e.getMessage());
+            }
         }
         JSONObject report = o.optJSONObject("haReport");
         String sensor = report == null ? "" : report.optString("entity", "").trim();
@@ -517,6 +529,7 @@ final class WebConfigServer implements Runnable {
             store.setBackground(trimmed(bg, "weather"), trimmed(bg, "sun"), trimmed(bg, "season"),
                     bg.has("holidays") ? bg.getString("holidays") : null,
                     override == null ? null : override.toString());
+            if (bg.has("nfs")) store.setBgNfs(bg.getString("nfs").trim(), bg.getInt("nfsUid"), bg.getInt("nfsGid"));
             if (bg.has("scrimDay")) store.setPercent(Store.KEY_SCRIM_DAY, bg.getInt("scrimDay"));
             if (bg.has("scrimNight")) store.setPercent(Store.KEY_SCRIM_NIGHT, bg.getInt("scrimNight"));
             if (bg.has("scrimEnd")) store.setPercent(Store.KEY_SCRIM_END, bg.getInt("scrimEnd"));

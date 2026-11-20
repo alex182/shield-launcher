@@ -4,6 +4,7 @@
 #   ./build.sh            build only
 #   ./build.sh install    build, install on every SHIELD, return each to HOME
 # DEVICES (space-separated) or DEVICE overrides the targets.
+# BUNDLE_BACKGROUNDS=1 builds the background images into the APK (about 1.1 GB).
 set -euo pipefail
 cd "$(dirname "$0")"
 DEVICES="${DEVICES:-${DEVICE:-192.168.1.209:5555 192.168.1.197:5555}}"
@@ -17,7 +18,7 @@ docker run --rm \
   -v "$PWD":/workspaces/shield-launcher \
   -v shield-launcher-gradle:/home/dev/.gradle \
   -w /workspaces/shield-launcher \
-  "$IMAGE" gradle :app:testReleaseUnitTest :app:assembleRelease --no-daemon --console=plain
+  "$IMAGE" gradle :app:testReleaseUnitTest :app:assembleRelease ${BUNDLE_BACKGROUNDS:+-PbundleBackgrounds} --no-daemon --console=plain
 
 echo "APK: $APK ($(stat -c%s "$APK") bytes)"
 
