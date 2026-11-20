@@ -204,7 +204,30 @@ final class WebConfigServer implements Runnable {
                 int music = android.media.AudioManager.STREAM_MUSIC;
                 m.put("volume", audio.getStreamVolume(music)).put("volumeMax", audio.getStreamMaxVolume(music));
                 if (android.os.Build.VERSION.SDK_INT >= 23) m.put("muted", audio.isStreamMute(music));
+                String musicPkg = MusicApp.chosen(context, store.musicApp());
+                if (!musicPkg.isEmpty()) {
+                    m.put("musicApp", new JSONObject().put("pkg", musicPkg)
+                            .put("label", MusicApp.installed(context).get(musicPkg)));
+                }
+                m.put("musicStatus", MusicApp.status);
                 send(client, 200, "application/json", m.toString());
+            } else if (method.equals("POST") && path.equals("/api/music/play")) {
+                // {artist, album?, links?, shuffle}. Returns at once; the drawer shows
+                // musicStatus as the app starts and the shuffle mode is set.
+                JSONObject o = new JSONObject(text);
+                String artist = o.getString("artist").trim();
+                if (artist.isEmpty()) throw new JSONException("Type an artist");
+                String musicPkg = MusicApp.chosen(context, store.musicApp());
+                if (musicPkg.isEmpty()) throw new JSONException("No music app to play it: pick one under Music app");
+                List<String> links = new ArrayList<>();
+                JSONArray la = o.optJSONArray("links");
+                for (int i = 0; la != null && i < la.length(); i++) {
+                    String l = la.getString(i);
+                    if (l.startsWith("https://")) links.add(l);
+                }
+                MusicApp.play(context, musicPkg, new MusicApp.Request(artist, o.optString("album"), links,
+                        o.optBoolean("shuffle", true)));
+                sendResult(client, () -> MusicApp.status);
             } else if (method.equals("GET") && path.equals("/api/media/art")) {
                 send(client, 200, "application/json", new JSONObject().put("art", MediaNow.art()).toString());
             } else if (method.equals("POST") && path.equals("/api/media")) {
@@ -409,6 +432,8 @@ final class WebConfigServer implements Runnable {
                 .put("digestShown", store.digestShown())
                 .put("digestTime", store.digestTime())
                 .put("visualizerHold", store.visualizerHold())
+                .put("musicApp", store.musicApp())
+                .put("musicApps", MusicApp.list(context))
                 .put("visualizer", store.visualizer())
                 .put("radarShown", store.radarShown())
                 .put("radarSource", store.radarSource())
@@ -546,6 +571,7 @@ final class WebConfigServer implements Runnable {
         if (o.has("reminderTimes")) {
             store.setReminders(o.getString("reminderTimes"), o.optBoolean("reminderChime", true));
         }
+        if (o.has("musicApp")) store.setMusicApp(o.getString("musicApp").trim());
         if (o.has("visualizerHold")) {
             JSONObject v = o.optJSONObject("visualizer");
             store.setVisualizer(o.getBoolean("visualizerHold"), v == null ? store.visualizer() : v);

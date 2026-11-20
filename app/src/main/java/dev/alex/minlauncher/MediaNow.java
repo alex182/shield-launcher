@@ -157,7 +157,7 @@ final class MediaNow {
         return true;
     }
 
-    private static String text(MediaMetadata md, String... keys) {
+    static String text(MediaMetadata md, String... keys) {
         if (md == null) return "";
         for (String k : keys) {
             CharSequence v = md.getText(k);
